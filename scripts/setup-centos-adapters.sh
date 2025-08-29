@@ -68,7 +68,8 @@ gpgcheck=0
 EOF
   
   dnf_install \
-    ucx-cuda
+    ucx-cuda \
+    ucx-devel
 }
 
 function install_adapters_deps_from_dnf {

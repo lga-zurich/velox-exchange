@@ -59,17 +59,10 @@ function install_cuda {
     cuda-nvrtc-devel-"$dashed" \
     libcufile-devel-"$dashed" \
     numactl-libs
-  cat > /etc/yum.repos.d/doca.repo <<EOF
-  [doca]
-  name=DOCA Online Repo
-  baseurl=https://linux.mellanox.com/public/repo/doca/latest-2.9-LTS/rhel9.4/x86_64/
-  enabled=1
-  gpgcheck=0
-  EOF
   
   dnf_install \
-    ucx-cuda \
-    ucx-gdrcopy
+    ucx-devel \
+    ucx-ib
 }
 
 function install_adapters_deps_from_dnf {

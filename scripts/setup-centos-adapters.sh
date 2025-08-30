@@ -29,12 +29,13 @@
 set -efx -o pipefail
 
 VELOX_CUDA_VERSION=${CUDA_VERSION:-"12.8"}
+VELOX_UCX_VERSION=${UCX_VERSION:-"1.18.1"}
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 source "$SCRIPT_DIR"/setup-centos9.sh
 
 function install_ucx {
   dnf_install rdma-core-devel
-  wget_and_untar https://github.com/openucx/ucx/releases/download/v1.18.1/ucx-1.18.1.tar.gz ucx
+  wget_and_untar https://github.com/openucx/ucx/releases/download/v"${VELOX_UCX_VERSION}"/ucx-"${VELOX_UCX_VERSION}".tar.gz ucx
   (
     cd "${DEPENDENCY_DIR}"/ucx || exit
     mkdir build-linux && cd build-linux

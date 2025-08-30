@@ -32,6 +32,21 @@ VELOX_CUDA_VERSION=${CUDA_VERSION:-"12.8"}
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 source "$SCRIPT_DIR"/setup-centos9.sh
 
+function install_ucx {
+  dnf_install rdma-core-devel
+  wget_and_untar https://github.com/openucx/ucx/releases/download/v1.18.1/ucx-1.18.1.tar.gz ucx
+  (
+    cd "${DEPENDENCY_DIR}"/ucx || exit
+    mkdir build-linux && cd build-linux
+    ../contrib/configure-release --prefix="${INSTALL_PREFIX}" --with-sysroot --enable-cma \
+        --enable-mt --with-gnu-ld --with-rdmacm --with-verbs \
+        --with-cuda="/usr/local/cuda"
+    make "-j${NPROC}"
+    ${SUDO} make install
+  )
+}
+
+
 function install_cuda {
   # See https://developer.nvidia.com/cuda-downloads
   local arch
@@ -58,11 +73,8 @@ function install_cuda {
     cuda-minimal-build-"$dashed" \
     cuda-nvrtc-devel-"$dashed" \
     libcufile-devel-"$dashed" \
-    numactl-libs
-  
-  dnf_install \
-    ucx-ib \
-    ucx-devel
+    cuda-nvml-devel-"$dashed" \
+    numactl-devel
 }
 
 function install_adapters_deps_from_dnf {

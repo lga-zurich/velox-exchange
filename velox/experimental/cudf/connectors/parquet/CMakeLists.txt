@@ -37,6 +37,7 @@ set_target_properties(
 target_link_libraries(
   velox_cudf_parquet_connector
   PRIVATE
+    ucxx::ucxx
     cudf::cudf
     velox_common_io
     velox_connector

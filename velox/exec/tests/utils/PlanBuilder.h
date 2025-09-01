@@ -334,6 +334,7 @@ class PlanBuilder {
 
     // SubfieldFilters object containing filters to apply.
     common::SubfieldFilters subfieldFiltersMap_;
+    std::vector<core::TypedExprPtr> subfieldExprs;
   };
 
   /// Start a TableScanBuilder.

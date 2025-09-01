@@ -83,6 +83,14 @@ class CudfOptions {
     return transformLastOutput_;
   }
 
+  void setParquetConnectorRegistered(bool newValue) {
+    parquetConnectorRegistered_ = newValue;
+  }
+
+  const bool isParquetConnectorRegistered() const {
+    return parquetConnectorRegistered_;
+  }
+
   const bool cudfEnabled;
   const std::string cudfMemoryResource;
   const bool cudfTableScan;
@@ -99,10 +107,12 @@ class CudfOptions {
         cudfExchange(FLAGS_velox_cudf_exchange),
         memoryPercent(50),
         prefix_(""),
+        parquetConnectorRegistered_(false),
         transformLastOutput_(false) {}
   CudfOptions(const CudfOptions&) = delete;
   CudfOptions& operator=(const CudfOptions&) = delete;
   std::string prefix_;
+  bool parquetConnectorRegistered_;
   bool transformLastOutput_;
 };
 
@@ -119,8 +129,9 @@ bool cudfIsRegistered();
 bool cudfDebugEnabled();
 
 /**
- * @brief Returns true if the velox_cudf_table_scan flag is set to true.
+ * @brief Returns true if an application indicated that the parquet connector is
+ * registered
  */
-bool cudfTableScanEnabled();
+bool isParquetConnectorRegistered();
 
 } // namespace facebook::velox::cudf_velox

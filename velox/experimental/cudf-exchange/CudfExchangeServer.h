@@ -105,6 +105,7 @@ class CudfExchangeServer
   std::atomic<ServerState> state_;
   std::unique_ptr<cudf::packed_columns> dataPtr_{nullptr};
   std::recursive_mutex dataMutex_; // mutex for above ptr.
+  std::atomic<bool> closed_{false};
 
   uint32_t sequenceNumber_{0};
 

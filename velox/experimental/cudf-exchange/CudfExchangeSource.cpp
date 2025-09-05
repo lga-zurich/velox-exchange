@@ -107,12 +107,17 @@ void CudfExchangeSource::process() {
 }
 
 void CudfExchangeSource::close() {
+  bool expected = false;
+  bool desired = true;  
+  if (!closed_.compare_exchange_strong(expected, desired)) {
+    return; // already closed.
+  }
   VLOG(1) << "CudfExchangeSource::close called.";
   VLOG(1) << fmt::format("closing task: {}", partitionKey_.toString());
-  closed_.store(true);
   VLOG(3) << "Close receiver to remote " << partitionKey_.toString() << ".";
   if (endpointRef_) {
     endpointRef_->removeCommElem(getSelfPtr());
+    endpointRef_=nullptr;
   }
   communicator_->unregister(getSelfPtr());
 }
@@ -156,14 +161,19 @@ PartitionKey CudfExchangeSource::extractTaskAndDestinationId(
 }
 
 std::shared_ptr<CudfExchangeSource> CudfExchangeSource::getSelfPtr() {
-  return shared_from_this();
+  std::shared_ptr<CudfExchangeSource> ptr;
+  try {
+    ptr = shared_from_this();
+  } catch(std::bad_weak_ptr &exp) {
+    ptr = nullptr;
+  }
+  return ptr;
 }
 
 void CudfExchangeSource::enqueue(
     std::unique_ptr<cudf::packed_columns> columns,
     MetadataMsg& metadata) {
   std::vector<velox::ContinuePromise> queuePromises;
-  velox::VeloxPromise<ExchangeSource::Response> requestPromise;
   {
     std::lock_guard<std::mutex> l(queue_->mutex());
 
@@ -300,10 +310,10 @@ void CudfExchangeSource::onMetadata(
       // It seems that all data has been transferred
       atEnd_ = true;
       // enqueue a nullpointer to mark the end for this source.
-      VLOG(3) << "There is no more data to transfer";
-      enqueue(nullptr, ptr->metadata);
+      VLOG(3) << "There is no more data to transfer for " << toString();
       setState(ReceiverState::Done);
       communicator_->addToWorkQueue(getSelfPtr());
+      enqueue(nullptr, ptr->metadata);
       // jump out of this function.
       return;
     }

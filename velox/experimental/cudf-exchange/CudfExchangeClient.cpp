@@ -21,7 +21,6 @@
 namespace facebook::velox::cudf_exchange {
 
 void CudfExchangeClient::addRemoteTaskId(const std::string& remoteTaskId) {
-  std::vector<std::shared_ptr<CudfExchangeSource>> requestSpecs;
   std::shared_ptr<CudfExchangeSource> toClose;
   {
     std::lock_guard<std::mutex> l(queue_->mutex());
@@ -107,7 +106,6 @@ folly::F14FastMap<std::string, RuntimeMetric> CudfExchangeClient::stats()
 std::unique_ptr<cudf::packed_columns>
 CudfExchangeClient::next(int consumerId, bool* atEnd, ContinueFuture* future) {
   VLOG(3) << "CudfExchangeClient::next called for task " << taskId_;
-  std::vector<std::shared_ptr<CudfExchangeSource>> requestSpecs;
   std::unique_ptr<cudf::packed_columns> columns;
   ContinuePromise stalePromise = ContinuePromise::makeEmpty();
   {

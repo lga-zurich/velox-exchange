@@ -115,11 +115,17 @@ void Communicator::registerCommElement(std::shared_ptr<CommElement> comms) {
 }
 
 void Communicator::addToWorkQueue(std::shared_ptr<CommElement> comms) {
+  if (!comms) {
+    return;
+  }
   workQueue_.push(comms);
 }
 
 void Communicator::unregister(std::shared_ptr<CommElement> comms) {
   std::lock_guard<std::mutex> lock(elemMutex_);
+  if (!comms) {
+    return;
+  }
   workQueue_.erase(comms);
   elements_.erase(comms);
 }

@@ -91,18 +91,21 @@ void CudfExchangeServer::process() {
       // do
       break;
     case ServerState::Done:
-      // unregister.
-      communicator_->unregister(getSelfPtr());
       close();
       break;
   };
 }
 
 void CudfExchangeServer::close() {
-  VLOG(3) << "Close CudfExchangeServer to remote " << partitionKey_.toString()
-          << ".";
+  bool expected = false;
+  bool desired = true;  
+  if (!closed_.compare_exchange_strong(expected, desired)) {
+    return; // already closed.
+  }
+  VLOG(3) << "Close CudfExchangeServer to remote " << partitionKey_.toString();
   if (endpointRef_) {
     endpointRef_->removeCommElem(getSelfPtr());
+    endpointRef_ = nullptr;
   }
   communicator_->unregister(getSelfPtr());
 }

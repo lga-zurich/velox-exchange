@@ -104,13 +104,17 @@ void CudfPartitionedOutput::addInput(RowVectorPtr input) {
     }
   } else {
     // Single partition case. No need to hash, assume queue zero
-    auto packedCols = cudf::pack(
-        tableView, stream
-        // mr = cudf::get_current_device_resource_ref() //?
-    );
+    auto packedCols = cudf::pack(tableView, stream);
+    // Sync the stream since UCXX/UCX is not stream oriented and without syncing,
+    // data could get lost. Syncing here is  easy but notthe most efficient.
+    // A better approach is to create an event and pass it along the data through
+    // the queue and synchronize on the event before calling into UCXX.
+    // TODO: change stream sync and move to event sync
+    // Thanks to Lawrence Mitchel for pointing this out!
+    stream.synchronize();
     std::unique_ptr<cudf::packed_columns> packedColsPtr =
         std::make_unique<cudf::packed_columns>(
-            std::move(packedCols.metadata), std::move(packedCols.gpu_data));
+            std::move(packedCols.metadata), std::move(packedCols.gpu_data));    
     bool res = sharedQueueManager()->enqueue(
         this->taskId(),
         0,

@@ -29,7 +29,7 @@
 set -efx -o pipefail
 
 VELOX_CUDA_VERSION=${CUDA_VERSION:-"12.8"}
-VELOX_UCX_VERSION=${UCX_VERSION:-"1.18.1"}
+VELOX_UCX_VERSION=${UCX_VERSION:-"1.19.0"}
 SCRIPT_DIR=$(dirname "${BASH_SOURCE[0]}")
 source "$SCRIPT_DIR"/setup-centos9.sh
 

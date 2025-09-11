@@ -54,9 +54,9 @@ velox_resolve_dependency_url(cudf)
 
 set(VELOXX_ucxx_VERSION 0.45)
 set(VELOX_ucxx_BUILD_SHA256_CHECKSUM
-    0a090f74027d50dc1f4c6850d7666847b4a3f90e046e28b2d5c18f66890d7391)
+    e603bf66a1232c4fabb666d1b4860a8ad45eda53ec92d92e830ce126eac9f912)
 set(VELOX_ucxx_SOURCE_URL
-    "https://github.com/rapidsai/ucxx/archive/refs/tags/v0.45.00a.tar.gz")
+    "https://github.com/rapidsai/ucxx/archive/refs/tags/v0.45.01.tar.gz")
 velox_resolve_dependency_url(ucxx)
 
 # Use block so we don't leak variables
@@ -92,7 +92,6 @@ FetchContent_Declare(
   SOURCE_SUBDIR cpp
   UPDATE_DISCONNECTED 1)
 
-# DNB: Add UCXX dependency
 FetchContent_Declare(
   ucxx
   URL ${VELOX_ucxx_SOURCE_URL}

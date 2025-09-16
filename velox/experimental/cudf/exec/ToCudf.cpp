@@ -52,6 +52,7 @@ DEFINE_string(velox_cudf_memory_resource, "async", "Memory resource for cuDF");
 DEFINE_bool(velox_cudf_debug, false, "Enable debug printing");
 DEFINE_bool(velox_cudf_table_scan, true, "Enable cuDF table scan");
 DEFINE_bool(velox_cudf_exchange, true, "Enable cuDF exchange");
+DEFINE_int32(velox_cudf_memory_percentage, 50, "default rmm memory percentage");
 
 using namespace facebook::velox::cudf_exchange;
 

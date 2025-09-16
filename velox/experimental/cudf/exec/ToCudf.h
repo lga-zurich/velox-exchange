@@ -28,6 +28,7 @@ DECLARE_string(velox_cudf_memory_resource);
 DECLARE_bool(velox_cudf_debug);
 DECLARE_bool(velox_cudf_table_scan);
 DECLARE_bool(velox_cudf_exchange);
+DECLARE_int32(velox_cudf_memory_percentage);
 
 namespace facebook::velox::cudf_velox {
 
@@ -105,7 +106,7 @@ class CudfOptions {
         cudfMemoryResource(FLAGS_velox_cudf_memory_resource),
         cudfTableScan(FLAGS_velox_cudf_table_scan),
         cudfExchange(FLAGS_velox_cudf_exchange),
-        memoryPercent(50),
+        memoryPercent(velox_cudf_memory_percentage),
         prefix_(""),
         parquetConnectorRegistered_(false),
         transformLastOutput_(false) {}

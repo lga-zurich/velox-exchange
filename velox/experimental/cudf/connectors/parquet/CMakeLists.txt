@@ -28,7 +28,8 @@ add_library(
   ParquetConnectorSplit.cpp
   ParquetDataSource.cpp
   ParquetDataSink.cpp
-  ParquetTableHandle.cpp)
+  ParquetTableHandle.cpp
+  TableReader.cpp)
 
 set_target_properties(
   velox_cudf_parquet_connector
@@ -39,6 +40,7 @@ target_link_libraries(
   PRIVATE
     ucxx::ucxx
     cudf::cudf
+    kvikio::kvikio
     velox_common_io
     velox_connector
     velox_type_tz

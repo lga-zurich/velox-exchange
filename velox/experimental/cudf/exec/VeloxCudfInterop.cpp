@@ -95,6 +95,7 @@ std::unique_ptr<cudf::table> toCudfTable(
     const facebook::velox::RowVectorPtr& veloxTable,
     facebook::velox::memory::MemoryPool* pool,
     rmm::cuda_stream_view stream) {
+      std::cout << "veloxtable: " << veloxTable->toString() << std::endl;
   // Need to flattenDictionary and flattenConstant, otherwise we observe issues
   // in the null mask.
   ArrowOptions arrowOptions{true, true};

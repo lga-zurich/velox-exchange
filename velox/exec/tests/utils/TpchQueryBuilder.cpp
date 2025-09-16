@@ -191,19 +191,19 @@ TpchPlan TpchQueryBuilder::getQueryPlan(int queryId) const {
 
 TpchPlan TpchQueryBuilder::getQ1Plan() const {
   std::vector<std::string> selectedColumns = {
-      "l_returnflag",
-      "l_linestatus",
-      "l_quantity",
-      "l_extendedprice",
-      "l_discount",
-      "l_tax",
-      "l_shipdate"};
+      "returnflag",
+      "linestatus",
+      "quantity",
+      "extendedprice",
+      "discount",
+      "tax",
+      "shipdate"};
 
   const auto selectedRowType = getRowType(kLineitem, selectedColumns);
   const auto& fileColumnNames = getFileColumnNames(kLineitem);
 
   // shipdate <= '1998-09-02'
-  const auto shipDate = "l_shipdate";
+  const auto shipDate = "shipdate";
   auto filter = formatDateFilter(shipDate, selectedRowType, "", "'1998-09-03'");
 
   core::PlanNodeId lineitemPlanNodeId;
@@ -214,26 +214,26 @@ TpchPlan TpchQueryBuilder::getQ1Plan() const {
           .tableScan(kLineitem, selectedRowType, fileColumnNames, {filter})
           .captureScanNodeId(lineitemPlanNodeId)
           .project(
-              {"l_returnflag",
-               "l_linestatus",
-               "l_quantity",
-               "l_extendedprice",
-               "l_extendedprice * (1.0 - l_discount) AS l_sum_disc_price",
-               "l_extendedprice * (1.0 - l_discount) * (1.0 + l_tax) AS l_sum_charge",
-               "l_discount"})
+              {"returnflag",
+               "linestatus",
+               "quantity",
+               "extendedprice",
+               "extendedprice * (1.0 - discount) AS l_sum_disc_price",
+               "extendedprice * (1.0 - discount) * (1.0 + tax) AS l_sum_charge",
+               "discount"})
           .partialAggregation(
-              {"l_returnflag", "l_linestatus"},
-              {"sum(l_quantity)",
-               "sum(l_extendedprice)",
+              {"returnflag", "linestatus"},
+              {"sum(quantity)",
+               "sum(extendedprice)",
                "sum(l_sum_disc_price)",
                "sum(l_sum_charge)",
-               "avg(l_quantity)",
-               "avg(l_extendedprice)",
-               "avg(l_discount)",
+               "avg(quantity)",
+               "avg(extendedprice)",
+               "avg(discount)",
                "count(0)"})
           .localPartition(std::vector<std::string>{})
           .finalAggregation()
-          .orderBy({"l_returnflag", "l_linestatus"}, false)
+          .orderBy({"returnflag", "linestatus"}, false)
           .planNode();
 
   TpchPlan context;

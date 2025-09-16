@@ -86,11 +86,13 @@ CudfFilterProject::CudfFilterProject(
 }
 
 void CudfFilterProject::addInput(RowVectorPtr input) {
+  LOG(INFO) << "CudfFilterProject::addInput()";
   input_ = std::move(input);
 }
 
 RowVectorPtr CudfFilterProject::getOutput() {
   VELOX_NVTX_OPERATOR_FUNC_RANGE();
+  LOG(INFO) << "CudfFilterProject::getOutput()";
 
   if (allInputProcessed()) {
     return nullptr;
@@ -208,10 +210,12 @@ std::vector<std::unique_ptr<cudf::column>> CudfFilterProject::project(
 }
 
 bool CudfFilterProject::allInputProcessed() {
+  LOG(INFO) << "CudfFilterProject::allInputProcessed()";
   return !input_;
 }
 
 bool CudfFilterProject::isFinished() {
+  LOG(INFO) << "CudfFilterProject::isFinished()";
   return noMoreInput_ && allInputProcessed();
 }
 

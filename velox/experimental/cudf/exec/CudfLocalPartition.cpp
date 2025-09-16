@@ -169,6 +169,7 @@ void CudfLocalPartition::addInput(RowVectorPtr input) {
 }
 
 exec::BlockingReason CudfLocalPartition::isBlocked(ContinueFuture* future) {
+  LOG(INFO) << "CudfLocalPartition::isBlocked()";
   if (!futures_.empty()) {
     auto blockingReason = blockingReasons_.front();
     *future = folly::collectAll(futures_.begin(), futures_.end()).unit();
@@ -181,6 +182,7 @@ exec::BlockingReason CudfLocalPartition::isBlocked(ContinueFuture* future) {
 }
 
 void CudfLocalPartition::noMoreInput() {
+  LOG(INFO) << "CudfLocalPartition::noMoreInput()";
   Operator::noMoreInput();
   for (const auto& queue : queues_) {
     queue->noMoreData();
@@ -188,10 +190,12 @@ void CudfLocalPartition::noMoreInput() {
 }
 
 bool CudfLocalPartition::isFinished() {
+  LOG(INFO) << "CudfLocalPartition::isFinished()";
   if (!futures_.empty() || !noMoreInput_) {
+    LOG(INFO) << "CudfLocalPartition NOT FINISHED: " << !futures_.empty() << " & " << !noMoreInput_;
     return false;
   }
-
+  LOG(INFO) << "CudfLocalPartition FINISHED: ";
   return true;
 }
 

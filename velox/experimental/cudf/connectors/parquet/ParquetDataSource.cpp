@@ -37,6 +37,7 @@
 
 #include <filesystem>
 #include <memory>
+#include <regex>
 #include <string>
 
 namespace facebook::velox::cudf_velox::connector::parquet {
@@ -92,6 +93,7 @@ ParquetDataSource::ParquetDataSource(
               readColumnNames_.begin(),
               readColumnNames_.end(),
               field->name()) == readColumnNames_.end()) {
+        LOG(INFO) << "Adding sub field to readColumnNames_ : " << field->name();
         readColumnNames_.push_back(field->name());
       }
     }
@@ -107,6 +109,7 @@ ParquetDataSource::ParquetDataSource(
               readColumnNames_.begin(),
               readColumnNames_.end(),
               field->name()) == readColumnNames_.end()) {
+        LOG(INFO) << "Adding remaining field to readColumnNames_ : " << field->name();
         readColumnNames_.push_back(field->name());
       }
     }
@@ -143,23 +146,42 @@ std::optional<RowVectorPtr> ParquetDataSource::next(
   VELOX_CHECK_NOT_NULL(split_, "No split to process. Call addSplit first.");
   VELOX_CHECK_NOT_NULL(splitReader_, "No split reader present");
 
-  if (not splitReader_->has_next()) {
+  LOG(INFO) << "Getting next chunk";
+  if (chunks_.size() == 0) {
+    LOG(INFO) << "NO CHUNK";
     return nullptr;
   }
+  uint32_t chunk = chunks_.back();
+  chunks_.pop_back();
+  LOG(INFO) << "Popping Chunk is : " << chunk;
 
   // Record start time before reading chunk
   auto startTimeUs = getCurrentTimeMicro();
 
-  std::unique_ptr<cudf::table> cudfTable;
   // Read a table chunk
-  auto [table, metadata] = splitReader_->read_chunk();
-  cudfTable = std::move(table);
+  // auto [table, metadata] = splitReader_->read_chunk();
+  size_t read_bytes;
+  //auto cudfTable = splitReader_->LoadTableChunkAndGetBytes(
+  //    readColumnNames_, chunk, read_bytes, stream_);
+  
+  auto cudfTable = [&] {
+    auto noLikeExpr = std::vector<ibm::velox::cudf_velox::connector::parquet_hack::LikeExpr>();
+    if (subfieldFilterExprSet_) {
+        return splitReader_->LoadTableSeq(
+      readColumnNames_, readColumnNames_, chunk, subfieldTree_.back(), noLikeExpr, read_bytes, stream_);
+  } else {
+    return splitReader_->LoadTableSeq(
+      readColumnNames_, readColumnNames_, chunk, std::nullopt, noLikeExpr, read_bytes, stream_);
+  }}();
+
+  LOG(INFO) << "Read Chunk: " << chunk;
+  completedBytes_ += read_bytes;
   // Fill in the column names if reading the first chunk.
-  if (columnNames_.empty()) {
-    for (const auto& schema : metadata.schema_info) {
+  /*if (columnNames_.empty()) {
+    for (auto schema : metadata.schema_info) {
       columnNames_.emplace_back(schema.name);
     }
-  }
+  }*/
 
   TotalScanTimeCallbackData* callbackData =
       new TotalScanTimeCallbackData{startTimeUs, ioStats_};
@@ -254,10 +276,7 @@ void ParquetDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   split_ = std::dynamic_pointer_cast<ParquetConnectorSplit>(split);
   VLOG(1) << "Adding split " << split_->toString();
 
-  // Split reader already exists, reset
-  if (splitReader_) {
-    splitReader_.reset();
-  }
+  LOG(INFO) << "Adding split" << split_->toString();
 
   // Clear columnNames if not empty
   if (not columnNames_.empty()) {
@@ -265,18 +284,101 @@ void ParquetDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
   }
 
   // Create a `cudf::io::chunked_parquet_reader` SplitReader
-  splitReader_ = createSplitReader();
+  // splitReader_ = createSplitReader();
 
   // TODO: `completedBytes_` should be updated in `next()` as we read more and
   // more table bytes
   const auto& filePaths = split_->getCudfSourceInfo().filepaths();
-  //for (const auto& filePath : filePaths) {
-  //  completedBytes_ += std::filesystem::file_size(filePath);
-  //}
+  assert(filePaths.size() == 1);
+  /*for (const auto& filePath : filePaths) {
+    completedBytes_ += std::filesystem::file_size(filePath);
+  }*/
+  // LOG(INFO) << "tableHandle NAME : " << tableHandle_->name();
+  auto pos = tableHandle_->name().find(".");
+  std::string tableHandle_name = tableHandle_->name().substr(
+      pos + 1, tableHandle_->name().length() - (pos + 1));
+  // LOG(INFO) << "tableHandle extracted name: " << tableHandle_name;
+  pos = filePaths[0].find(tableHandle_name + "_parquet_hack");
+  // LOG(INFO) << "pos in filePath = " << pos;
+  const std::string data_folderpath = filePaths[0].substr(0, pos);
+  // LOG(INFO) << "Data folder path: " << data_folderpath;
+
+  std::regex sf_regex("[0-9]+.parquet");
+  auto sf_begin =
+      std::sregex_iterator(filePaths[0].begin(), filePaths[0].end(), sf_regex);
+  std::string parquet_file_name = (*(sf_begin)).str();
+  pos = parquet_file_name.find('.');
+  uint32_t chunk = std::stoi(parquet_file_name.substr(0, pos));
+  LOG(INFO) << "Pushing chunk : " << chunk;
+  chunks_.push_back(chunk);
+
+  if (!splitReader_) {
+    // Create a TableReader
+    LOG(INFO) << "About to create TableReader";
+    splitReader_ = createSplitReader(data_folderpath, tableHandle_name);
+  }
+
+  // LOG(INFO) << "Adding SPLIT column names";
+  for (auto columnName : outputType_->names()) {
+      columnNames_.emplace_back(columnName);
+  }
+}
+
+std::unique_ptr<ibm::velox::cudf_velox::connector::parquet_hack::TableReader>
+ParquetDataSource::createSplitReader(
+    const std::string& data_folderpath,
+    const std::string& tableName) {
+  if (subfieldFilterExprSet_) {
+    LOG(INFO) << "Got subfieldFilterExprSet";
+    auto subfieldFilterExpr = subfieldFilterExprSet_->expr(0);
+
+    // non-ast instructions in filter is not supported for SubFieldFilter.
+    // precomputeInstructions which are non-ast instructions should be empty.
+    std::vector<PrecomputeInstruction> precomputeInstructions;
+
+    const RowTypePtr readerFilterType_ = [&] {
+      if (tableHandle_->dataColumns()) {
+        std::vector<std::string> new_names;
+        std::vector<TypePtr> new_types;
+
+        for (const auto& name : readColumnNames_) {
+          // Ensure all columns being read are available to the filter
+          auto parsedType = tableHandle_->dataColumns()->findChild(name);
+          new_names.emplace_back(std::move(name));
+          new_types.push_back(parsedType);
+        }
+
+        return ROW(std::move(new_names), std::move(new_types));
+      } else {
+        return outputType_;
+      }
+    }();
+
+    createAstTree(
+        subfieldFilterExpr,
+        subfieldTree_,
+        subfieldScalars_,
+        readerFilterType_,
+        precomputeInstructions);
+    VELOX_CHECK_EQ(precomputeInstructions.size(), 0);
+    //readerOptions.set_filter(subfieldTree_.back());
+  }
+
+  std::unique_ptr<ibm::velox::cudf_velox::connector::parquet_hack::TableReader>
+      table_reader;
+  try {
+    table_reader = std::make_unique<
+        ibm::velox::cudf_velox::connector::parquet_hack::TableReader>(
+        data_folderpath, tableName);
+  } catch (const std::runtime_error& e) {
+    LOG(INFO) << "Got exception : " << e.what();
+  }
+  return table_reader;
 }
 
 std::unique_ptr<cudf::io::chunked_parquet_reader>
 ParquetDataSource::createSplitReader() {
+  LOG(INFO) << "Creating Split reader";
   // Reader options
   auto readerOptions =
       cudf::io::parquet_reader_options::builder(split_->getCudfSourceInfo())
@@ -290,10 +392,12 @@ ParquetDataSource::createSplitReader() {
 
   // Set num_rows only if available
   if (parquetConfig_->numRows().has_value()) {
+    LOG(INFO) << "Setting num rows";
     readerOptions.set_num_rows(parquetConfig_->numRows().value());
   }
 
   if (subfieldFilterExprSet_) {
+    LOG(INFO) << "Got subfieldFilterExprSet";
     auto subfieldFilterExpr = subfieldFilterExprSet_->expr(0);
 
     // non-ast instructions in filter is not supported for SubFieldFilter.
@@ -344,6 +448,7 @@ ParquetDataSource::createSplitReader() {
 }
 
 void ParquetDataSource::resetSplit() {
+  LOG(INFO) << "Resetting split";
   split_.reset();
   splitReader_.reset();
   columnNames_.clear();

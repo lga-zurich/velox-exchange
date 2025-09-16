@@ -19,6 +19,7 @@
 #include "velox/experimental/cudf/connectors/parquet/ParquetConfig.h"
 #include "velox/experimental/cudf/connectors/parquet/ParquetConnectorSplit.h"
 #include "velox/experimental/cudf/connectors/parquet/ParquetTableHandle.h"
+#include "velox/experimental/cudf/connectors/parquet/TableReader.hpp"
 #include "velox/experimental/cudf/exec/ExpressionEvaluator.h"
 #include "velox/experimental/cudf/exec/NvtxHelper.h"
 
@@ -71,6 +72,10 @@ class ParquetDataSource : public DataSource, public NvtxHelper {
  private:
   // Create a cudf::io::chunked_parquet_reader with the given split.
   std::unique_ptr<cudf::io::chunked_parquet_reader> createSplitReader();
+  std::unique_ptr<ibm::velox::cudf_velox::connector::parquet_hack::TableReader>
+  createSplitReader(
+      const std::string& data_folderpath,
+      const std::string& tableName);
   // Clear split_ and splitReader after split has been fully processed.  Keep
   // readers around to hold adaptation.
   void resetSplit();
@@ -97,8 +102,11 @@ class ParquetDataSource : public DataSource, public NvtxHelper {
 
   // cuDF Parquet reader stuff.
   cudf::io::parquet_reader_options readerOptions_;
-  std::unique_ptr<cudf::io::chunked_parquet_reader> splitReader_;
+  // std::unique_ptr<cudf::io::chunked_parquet_reader> splitReader_;
+  std::unique_ptr<ibm::velox::cudf_velox::connector::parquet_hack::TableReader>
+      splitReader_;
   rmm::cuda_stream_view stream_;
+  std::vector<uint32_t> chunks_;
 
   // Table column names read from the Parquet file
   std::vector<std::string> columnNames_;

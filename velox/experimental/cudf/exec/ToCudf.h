@@ -106,7 +106,7 @@ class CudfOptions {
         cudfMemoryResource(FLAGS_velox_cudf_memory_resource),
         cudfTableScan(FLAGS_velox_cudf_table_scan),
         cudfExchange(FLAGS_velox_cudf_exchange),
-        memoryPercent(velox_cudf_memory_percentage),
+        memoryPercent(FLAGS_velox_cudf_memory_percentage),
         prefix_(""),
         parquetConnectorRegistered_(false),
         transformLastOutput_(false) {}

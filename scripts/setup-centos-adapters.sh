@@ -35,9 +35,25 @@ source "$SCRIPT_DIR"/setup-centos9.sh
 
 function install_ucx {
   dnf_install rdma-core-devel
-  wget_and_untar https://github.com/openucx/ucx/releases/download/v"${VELOX_UCX_VERSION}"/ucx-"${VELOX_UCX_VERSION}".tar.gz ucx
+  local UCX_REPO_NAME="openucx/ucx"
+  local NEEDS_AUTOGEN=false
+
+  if [ "${VELOX_UCX_VERSION}" == "master" ]; then
+      echo "UCX version is 'master', performing git checkout..."
+      github_checkout "${UCX_REPO_NAME}" "${VELOX_UCX_VERSION}"
+      NEEDS_AUTOGEN=true
+  else
+      echo "UCX version is '${VELOX_UCX_VERSION}', performing wget and untar..."
+      wget_and_untar https://github.com/openucx/ucx/releases/download/v"${VELOX_UCX_VERSION}"/ucx-"${VELOX_UCX_VERSION}".tar.gz ucx
+  fi
+
   (
     cd "${DEPENDENCY_DIR}"/ucx || exit
+    if [ "${NEEDS_AUTOGEN}" = true ]; then
+      echo "Running autogen.sh for master branch..."
+      ./autogen.sh
+    fi
+
     mkdir build-linux && cd build-linux
     ../contrib/configure-release --prefix="${INSTALL_PREFIX}" --with-sysroot --enable-cma \
         --enable-mt --with-gnu-ld --with-rdmacm --with-verbs \
@@ -46,7 +62,6 @@ function install_ucx {
     ${SUDO} make install
   )
 }
-
 
 function install_cuda {
   # See https://developer.nvidia.com/cuda-downloads

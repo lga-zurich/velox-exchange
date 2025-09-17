@@ -53,6 +53,7 @@ DEFINE_bool(velox_cudf_debug, false, "Enable debug printing");
 DEFINE_bool(velox_cudf_table_scan, true, "Enable cuDF table scan");
 DEFINE_bool(velox_cudf_exchange, true, "Enable cuDF exchange");
 DEFINE_int32(velox_cudf_memory_percentage, 50, "default rmm memory percentage");
+DEFINE_bool(velox_cudf_zrl_reader, false, "Enable ZRL reader");
 
 using namespace facebook::velox::cudf_exchange;
 
@@ -329,8 +330,9 @@ bool CompileState::compile() {
           (planNode->isRootFragment())) {
         keepOperator = 1;
       } else {
-        replaceOp.push_back(std::make_unique<CudfPartitionedOutput>(
-            id, ctx, planNode, partitionOp->eagerFlush_));
+        replaceOp.push_back(
+            std::make_unique<CudfPartitionedOutput>(
+                id, ctx, planNode, partitionOp->eagerFlush_));
         replaceOp.back()->initialize();
       }
     } else if (auto exchangeOp = dynamic_cast<exec::Exchange*>(oper)) {

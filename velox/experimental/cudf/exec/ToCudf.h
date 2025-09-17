@@ -29,6 +29,7 @@ DECLARE_bool(velox_cudf_debug);
 DECLARE_bool(velox_cudf_table_scan);
 DECLARE_bool(velox_cudf_exchange);
 DECLARE_int32(velox_cudf_memory_percentage);
+DECLARE_bool(velox_cudf_zrl_reader);
 
 namespace facebook::velox::cudf_velox {
 

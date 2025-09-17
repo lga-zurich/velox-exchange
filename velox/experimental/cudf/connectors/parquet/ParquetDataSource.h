@@ -102,9 +102,9 @@ class ParquetDataSource : public DataSource, public NvtxHelper {
 
   // cuDF Parquet reader stuff.
   cudf::io::parquet_reader_options readerOptions_;
-  // std::unique_ptr<cudf::io::chunked_parquet_reader> splitReader_;
+  std::unique_ptr<cudf::io::chunked_parquet_reader> splitReaderCudf_;
   std::unique_ptr<ibm::velox::cudf_velox::connector::parquet_hack::TableReader>
-      splitReader_;
+      splitReaderZrl_;
   rmm::cuda_stream_view stream_;
   std::vector<uint32_t> chunks_;
 

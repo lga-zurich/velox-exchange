@@ -91,6 +91,7 @@ function install_cuda {
     libcufile-devel-"$dashed" \
     libnvjitlink-devel-"$dashed" \
     cuda-nvml-devel-"$dashed" \
+    libnvjitlink-devel-"$dashed" \
     numactl-devel
 }
 

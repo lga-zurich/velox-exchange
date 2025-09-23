@@ -141,7 +141,7 @@ std::shared_ptr<EndpointRef> Communicator::assocEndpointRef(
   }
   // endpoint doesn't exist. Need to connect. Enable error handling.
   auto ep = worker_->createEndpointFromHostname(
-      hostPort.hostname, hostPort.port, true);
+      hostPort.hostname, hostPort.port, false);
   std::shared_ptr<EndpointRef> epRef = nullptr;
   if (ep != nullptr) {
     epRef = std::make_shared<EndpointRef>(ep);
@@ -188,7 +188,7 @@ void Communicator::listenerCallback(ucp_conn_request_h conn_request) {
   // shared. This guarantees that between any two nodes, there will be at most 2
   // endpoints, one per direction. For compatibility reasons, both incoming and
   // outgoing endpoints are represented using the EndpointRef.
-  auto endpoint = listener_->createEndpointFromConnRequest(conn_request, true);
+  auto endpoint = listener_->createEndpointFromConnRequest(conn_request, false);
   auto epRef = std::make_shared<EndpointRef>(endpoint);
   endpoint->setCloseCallback(EndpointRef::onClose, epRef);
   // Add this endpoint reference to the list of endpoints.

@@ -299,10 +299,10 @@ void CudfHiveDataSource::addSplit(std::shared_ptr<ConnectorSplit> split) {
 
   // TODO: `completedBytes_` should be updated in `next()` as we read more and
   // more table bytes
-  const auto& filePaths = split_->getCudfSourceInfo().filepaths();
-  for (const auto& filePath : filePaths) {
-    completedBytes_ += std::filesystem::file_size(filePath);
-  }
+  //const auto& filePaths = split_->getCudfSourceInfo().filepaths();
+  //for (const auto& filePath : filePaths) {
+  //  completedBytes_ += std::filesystem::file_size(filePath);
+  //}
 }
 
 std::unique_ptr<cudf::io::chunked_parquet_reader>

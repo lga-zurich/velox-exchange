@@ -106,6 +106,7 @@ class CudfOptions {
   CudfOptions()
       : cudfEnabled(FLAGS_velox_cudf_enabled),
         cudfMemoryResource(FLAGS_velox_cudf_memory_resource),
+        cudfExchange(FLAGS_velox_cudf_exchange),
         memoryPercent(50),
         force_replace{false},
         prefix_(""),

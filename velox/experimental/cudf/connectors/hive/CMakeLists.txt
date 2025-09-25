@@ -33,5 +33,5 @@ set_target_properties(velox_cudf_hive_connector PROPERTIES CUDA_ARCHITECTURES na
 
 target_link_libraries(
   velox_cudf_hive_connector
-  PRIVATE cudf::cudf velox_common_io velox_connector velox_type_tz velox_gcs
+  PRIVATE ucxx::ucxx cudf::cudf velox_common_io velox_connector velox_type_tz velox_gcs
 )

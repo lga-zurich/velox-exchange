@@ -487,6 +487,7 @@ if(VELOX_ENABLE_WAVE OR VELOX_ENABLE_CUDF)
     set(VELOX_ENABLE_ARROW ON)
     velox_set_source(cudf)
     velox_resolve_dependency(cudf)
+    add_compile_definitions(VELOX_ENABLE_CUDF)
   endif()
 endif()
 

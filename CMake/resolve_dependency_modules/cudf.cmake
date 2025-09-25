@@ -110,13 +110,16 @@ block(SCOPE_FOR VARIABLES)
     UPDATE_DISCONNECTED 1
   )
 
+  FetchContent_Declare(
+    ucxx
+    URL ${VELOX_ucxx_SOURCE_URL}
+    URL_HASH ${VELOX_ucxx_BUILD_SHA256_CHECKSUM}
+    SOURCE_SUBDIR cpp
+    UPDATE_DISCONNECTED 1
+  )
+
   FetchContent_MakeAvailable(cudf)
-FetchContent_Declare(
-  ucxx
-  URL ${VELOX_ucxx_SOURCE_URL}
-  URL_HASH ${VELOX_ucxx_BUILD_SHA256_CHECKSUM}
-  SOURCE_SUBDIR cpp
-  UPDATE_DISCONNECTED 1)
+  FetchContent_MakeAvailable(ucxx)
 
   # cudf sets all warnings as errors, and therefore fails to compile with velox
   # expanded set of warnings. We selectively disable problematic warnings just for

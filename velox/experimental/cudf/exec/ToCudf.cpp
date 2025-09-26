@@ -418,16 +418,17 @@ bool CompileState::compile(bool force_replace) {
       } else {
         // Get or create the CudfExchangeClient, using parameters from the Velox
         // exchange client.
+        auto key = TaskPlanNodeKey(oper->taskId(), oper->planNodeId());
         auto clientIter =
-            cudfExchangeClientByPlanNode_.find(oper->planNodeId());
+            cudfExchangeClientByTaskAndPlanNode_.find(key);
         std::shared_ptr<CudfExchangeClient> client = nullptr;
-        if (clientIter == cudfExchangeClientByPlanNode_.end()) {
+        if (clientIter == cudfExchangeClientByTaskAndPlanNode_.end()) {
           // create new cudfExchangeClient
           std::shared_ptr<ExchangeClient> veloxExchangeClient =
               exchangeOp->exchangeClient_;
           client = createCudfExchangeClient(
+              oper->taskId(),
               oper->planNodeId(),
-              veloxExchangeClient->taskId_,
               veloxExchangeClient->destination_,
               veloxExchangeClient->numberOfConsumers_,
               veloxExchangeClient->executor_);
@@ -527,14 +528,15 @@ bool CompileState::compile(bool force_replace) {
 }
 
 std::shared_ptr<CudfExchangeClient> CompileState::createCudfExchangeClient(
-    const core::PlanNodeId& planNodeId,
     const std::string& taskId,
+    const core::PlanNodeId& planNodeId,
     const int destination,
     const int32_t numberOfConsumers,
     folly::Executor* executor) {
   auto client = std::make_shared<CudfExchangeClient>(
       taskId, destination, numberOfConsumers, executor);
-  cudfExchangeClientByPlanNode_.emplace(planNodeId, client);
+  TaskPlanNodeKey key(taskId, planNodeId);
+  cudfExchangeClientByTaskAndPlanNode_.emplace(key, client);
   return client;
 }
 

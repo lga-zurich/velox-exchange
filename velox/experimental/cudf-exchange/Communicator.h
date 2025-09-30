@@ -22,6 +22,10 @@
 #include "velox/experimental/cudf-exchange/CommElement.h"
 #include "velox/experimental/cudf-exchange/WorkQueue.h"
 
+#include <gflags/gflags.h>
+
+DECLARE_bool(velox_cudf_exchange);
+
 namespace facebook::velox::cudf_exchange {
 
 struct HostPort {
@@ -55,6 +59,9 @@ class Communicator {
 
   /// @brief Method to get the Communicator reference
   static std::shared_ptr<Communicator> getInstance();
+
+  /// @brief Destructor.
+  ~Communicator();
 
   /// @brief Starts the Communicator
   void run();

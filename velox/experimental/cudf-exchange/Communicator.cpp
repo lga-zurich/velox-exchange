@@ -63,6 +63,15 @@ std::shared_ptr<Communicator> Communicator::getInstance() {
   instance->listenerCallback(conn_request);
 }
 
+Communicator::~Communicator() {
+  listener_.reset();
+  auto req = worker_->flush();
+  worker_->progressWorkerEvent(100);
+  worker_.reset();
+  context_.reset();
+  VLOG(3) << "Communicator destructed";
+}
+
 /// @brief Run doesn't return until stop() is called.
 /// All operations of the communicator will be carried out in the thread
 /// that calls run.
@@ -105,15 +114,16 @@ void Communicator::run() {
       throw e;
     }
   }
+  VLOG(3) << "Communicator stopping.";
 }
 
 /// @brief Stops the communicator, called from an outside thread.
 void Communicator::stop() {
+  running_.store(false);
   VLOG(3) << "In Communicator::stop "
           << " elements_.size(): " << elements_.size()
           << " endpoints_.size(): " << endpoints_.size()
           << " workQueue_._size(): " << workQueue_.size();
-  running_.store(false);
 }
 
 void Communicator::registerCommElement(std::shared_ptr<CommElement> comms) {

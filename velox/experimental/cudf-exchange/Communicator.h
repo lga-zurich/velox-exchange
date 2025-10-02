@@ -49,7 +49,9 @@ class Communicator {
   const ucxx::AmReceiverCallbackOwnerType kAmCallbackOwner = "velox";
   const ucxx::AmReceiverCallbackIdType kAmCallbackId = 123;
 
-  static std::shared_ptr<Communicator> initAndGet(uint16_t port);
+  static std::shared_ptr<Communicator> initAndGet(
+      uint16_t port,
+      std::string coordinatorURL);
 
   /// @brief Method to get the Communicator reference
   static std::shared_ptr<Communicator> getInstance();
@@ -90,6 +92,9 @@ class Communicator {
   /// the endpoint has become stale since the other side has disappeared.
   void removeEndpointRef(std::shared_ptr<EndpointRef> ep);
 
+  // Returns the URL of the coordinator.
+  const std::string& getCoordinatorUrl();
+
  private:
   Communicator() =
       default; // Private constructor to prevent direct instantiation
@@ -112,6 +117,7 @@ class Communicator {
   std::shared_ptr<ucxx::Worker> worker_;
   std::shared_ptr<ucxx::Listener> listener_;
   uint16_t port_;
+  std::string coordinatorURL_;
   std::atomic<bool> running_;
   Acceptor acceptor_;
 

@@ -32,8 +32,7 @@ void Acceptor::cStyleAMCallback(
       std::dynamic_pointer_cast<ucxx::Buffer>(request->getRecvBuffer());
   HandshakeMsg* handshakePtr = reinterpret_cast<HandshakeMsg*>(buffer->data());
   VELOX_CHECK(
-      handshakePtr != nullptr,
-      "AMCallback: could not cast to HandhsakeMsg.");
+      handshakePtr != nullptr, "AMCallback: could not cast to HandhsakeMsg.");
 
   // Create a exchangeServer based on the information received in the initial
   // handshake.

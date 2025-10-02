@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "velox/experimental/cudf-exchange/CudfExchangeClient.h"
+#include "velox/experimental/cudf-exchange/ExchangeClientFacade.h"
 
 #include "velox/exec/Driver.h"
 #include "velox/exec/Operator.h"
@@ -61,9 +61,10 @@ struct TaskPlanNodeKey {
 };
 
 static std::unordered_map<
-  TaskPlanNodeKey,
-  std::shared_ptr<cudf_exchange::CudfExchangeClient>,
-  TaskPlanNodeKey::Hash> cudfExchangeClientByTaskAndPlanNode_;
+    TaskPlanNodeKey,
+    std::shared_ptr<cudf_exchange::ExchangeClientFacade>,
+    TaskPlanNodeKey::Hash>
+    exchangeClientFacadeByTaskAndPlanNode_;
 
 class CompileState {
  public:
@@ -77,13 +78,6 @@ class CompileState {
   // Replaces sequences of Operators in the Driver given at construction with
   // cuDF equivalents. Returns true if the Driver was changed.
   bool compile(bool force_replace);
-
-  std::shared_ptr<cudf_exchange::CudfExchangeClient> createCudfExchangeClient(
-      const std::string& taskId,
-      const core::PlanNodeId& planNodeId,
-      const int destination,
-      const int32_t numberOfConsumers,
-      folly::Executor* executor);
 
   const exec::DriverFactory& driverFactory_;
   exec::Driver& driver_;

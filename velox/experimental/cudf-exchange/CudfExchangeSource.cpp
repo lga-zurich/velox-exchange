@@ -64,6 +64,12 @@ std::shared_ptr<CudfExchangeSource> CudfExchangeSource::create(
 }
 
 void CudfExchangeSource::process() {
+  if (closed_) {
+    // Driver thread called closed
+    cleanUp();
+    return;
+  }
+
   switch (state_) {
     case ReceiverState::Created: {
       // Get the endpoint.
@@ -72,7 +78,8 @@ void CudfExchangeSource::process() {
       auto epRef = communicator_->assocEndpointRef(selfPtr, hp);
       if (epRef) {
         setEndpoint(epRef);
-        setState(ReceiverState::WaitingForHandshakeComplete);
+        setStateIf(
+            ReceiverState::Created, ReceiverState::WaitingForHandshakeComplete);
         sendHandshake();
       } else {
         // connection failed.
@@ -88,7 +95,8 @@ void CudfExchangeSource::process() {
     case ReceiverState::ReadyToReceive:
       // change state before calling getMetadata since immediate upcalls in
       // getMetadata will also change state.
-      setState(ReceiverState::WaitingForMetadata);
+      setStateIf(
+          ReceiverState::ReadyToReceive, ReceiverState::WaitingForMetadata);
       getMetadata();
       break;
     case ReceiverState::WaitingForMetadata:
@@ -99,27 +107,46 @@ void CudfExchangeSource::process() {
       // Waiting for data is handled by an upcall from UCXX. Nothing to do.
       break;
     case ReceiverState::Done:
-      close();
-      // unregister.
-      communicator_->unregister(getSelfPtr());
+      // We need to call clean-up in this thread to remove any state
+      cleanUp();
       break;
   }
 }
 
+void CudfExchangeSource::cleanUp() {
+  uint32_t value = static_cast<uint32_t>(getState());
+  VLOG(3) << "In CudfExchangeSource::cleanUp state == " << value;
+
+  if (!request_->isCompleted()) {
+    // The Task has failed and we may need to cancel outstanding requests
+    VELOX_CHECK_NOT_NULL(request_);
+    request_->cancel();
+  }
+
+  if (endpointRef_) {
+    endpointRef_->removeCommElem(getSelfPtr());
+    endpointRef_ = nullptr;
+  }
+}
+
 void CudfExchangeSource::close() {
+  // This is called by the driver thread so we need ti be careful to
+  // indicate to the process thread that we are closing and
+  // let it to the actual cleaning up
+
   bool expected = false;
-  bool desired = true;  
+  bool desired = true;
   if (!closed_.compare_exchange_strong(expected, desired)) {
     return; // already closed.
   }
+
   VLOG(1) << "CudfExchangeSource::close called.";
   VLOG(1) << fmt::format("closing task: {}", partitionKey_.toString());
   VLOG(3) << "Close receiver to remote " << partitionKey_.toString() << ".";
-  if (endpointRef_) {
-    endpointRef_->removeCommElem(getSelfPtr());
-    endpointRef_=nullptr;
-  }
-  communicator_->unregister(getSelfPtr());
+
+  //  Let the Communicator progress thread do the actual clean-up
+  setState(ReceiverState::Done);
+  communicator_->addToWorkQueue(getSelfPtr());
 }
 
 folly::F14FastMap<std::string, int64_t> CudfExchangeSource::stats() const {
@@ -164,7 +191,7 @@ std::shared_ptr<CudfExchangeSource> CudfExchangeSource::getSelfPtr() {
   std::shared_ptr<CudfExchangeSource> ptr;
   try {
     ptr = shared_from_this();
-  } catch(std::bad_weak_ptr &exp) {
+  } catch (std::bad_weak_ptr& exp) {
     ptr = nullptr;
   }
   return ptr;
@@ -229,9 +256,13 @@ void CudfExchangeSource::onHandshake(
         ucs_status_string(status));
     VLOG(0) << errorMsg;
     setState(ReceiverState::Done);
+    queue_->setError(errorMsg); // Let the operator know via the queue
+
   } else {
     VLOG(3) << toString() << "+ onHandshake " << ucs_status_string(status);
-    setState(ReceiverState::ReadyToReceive);
+    setStateIf(
+        ReceiverState::WaitingForHandshakeComplete,
+        ReceiverState::ReadyToReceive);
   }
   // more work to do
   communicator_->addToWorkQueue(getSelfPtr());
@@ -274,6 +305,7 @@ void CudfExchangeSource::onMetadata(
         ucs_status_string(status));
     VLOG(0) << errorMsg;
     setState(ReceiverState::Done);
+    queue_->setError(errorMsg); // Let the operator know via the queue
     communicator_->addToWorkQueue(getSelfPtr());
   } else {
     VELOX_CHECK(arg != nullptr, "Didn't get metadata");
@@ -295,7 +327,7 @@ void CudfExchangeSource::onMetadata(
       atEnd_ = true;
       // enqueue a nullpointer to mark the end for this source.
       VLOG(3) << "There is no more data to transfer for " << toString();
-      setState(ReceiverState::Done);
+      setStateIf(ReceiverState::WaitingForMetadata, ReceiverState::Done);
       communicator_->addToWorkQueue(getSelfPtr());
       enqueue(nullptr, ptr->metadata);
       // jump out of this function.
@@ -310,12 +342,9 @@ void CudfExchangeSource::onMetadata(
       ptr->dataBuf = std::make_unique<rmm::device_buffer>(
           ptr->metadata.dataSizeBytes, stream);
     } catch (const rmm::bad_alloc& e) {
-      VLOG(0) << "!!! RMM bad_alloc: " << e.what();
-      setState(ReceiverState::Done);
-      communicator_->addToWorkQueue(getSelfPtr());
-      return;
-    } catch (const rmm::cuda_error& e) {
-      VLOG(0) << "!!! General allocation exception: " << e.what();
+      VLOG(0) << "*** RMM  failed to allocate: " << e.what();
+      queue_->setError(
+          "Failed to alloc GPU memory"); // Let the operator know via the queue
       setState(ReceiverState::Done);
       communicator_->addToWorkQueue(getSelfPtr());
       return;
@@ -332,7 +361,11 @@ void CudfExchangeSource::onMetadata(
     VLOG(3) << toString() << " waiting for data for chunk: " << sequenceNumber_
             << " using tag: " << std::hex << dataTag << std::dec;
 
-    setState(ReceiverState::WaitingForData);
+    if (!setStateIf(
+            ReceiverState::WaitingForMetadata, ReceiverState::WaitingForData)) {
+      VLOG(1) << "onMetadata Invalid previous state ";
+      return;
+    }
     request_ = endpointRef_->endpoint_->tagRecv(
         ptr->dataBuf->data(),
         ptr->metadata.dataSizeBytes,
@@ -352,7 +385,7 @@ void CudfExchangeSource::onMetadata(
 void CudfExchangeSource::onData(
     ucs_status_t status,
     std::shared_ptr<void> arg) {
-  VLOG(3) << "+ onDdata " << ucs_status_string(status);
+  VLOG(3) << "+ onData " << ucs_status_string(status);
 
   if (status != UCS_OK) {
     std::string errorMsg = fmt::format(
@@ -363,6 +396,7 @@ void CudfExchangeSource::onData(
         ucs_status_string(status));
     VLOG(0) << toString() << errorMsg;
     setState(ReceiverState::Done);
+    queue_->setError(errorMsg); // Let the operator know via the queue
   } else {
     VLOG(3) << toString() << "+ onData " << ucs_status_string(status)
             << " got chunk: " << sequenceNumber_;
@@ -379,7 +413,7 @@ void CudfExchangeSource::onData(
         std::make_unique<cudf::packed_columns>(
             std::move(ptr->metadata.cudfMetadata), std::move(ptr->dataBuf));
     enqueue(std::move(columns), ptr->metadata);
-    setState(ReceiverState::ReadyToReceive);
+    setStateIf(ReceiverState::WaitingForData, ReceiverState::ReadyToReceive);
   }
   communicator_->addToWorkQueue(getSelfPtr());
 }

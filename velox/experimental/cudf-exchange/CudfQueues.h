@@ -21,8 +21,8 @@
 #include <memory>
 #include <vector>
 #include "velox/core/PlanNode.h"
-#include "velox/exec/Task.h"
 #include "velox/exec/OutputBuffer.h" // for the Stats structure
+#include "velox/exec/Task.h"
 
 namespace facebook::velox::cudf_exchange {
 
@@ -196,11 +196,12 @@ class CudfOutputQueue {
 
   std::string toString();
 
-  /// @brief The stats of this output queue are shoe-horned into the stats object
-  /// of OutputBuffer. Since the OutputBuffer's stat object is part of the Task stats
-  /// and eventually processed at the Presto layer, this is the least intrusive way to
-  /// convey stats information. The stats info from the CudfDestinationQueue are omitted
-  /// since also the DestinationBuffer's stats are never processed by Presto.
+  /// @brief The stats of this output queue are shoe-horned into the stats
+  /// object of OutputBuffer. Since the OutputBuffer's stat object is part of
+  /// the Task stats and eventually processed at the Presto layer, this is the
+  /// least intrusive way to convey stats information. The stats info from the
+  /// CudfDestinationQueue are omitted since also the DestinationBuffer's stats
+  /// are never processed by Presto.
   exec::OutputBuffer::Stats stats();
 
  private:
@@ -212,9 +213,12 @@ class CudfOutputQueue {
   void updateStatsWithEnqueuedLocked(int64_t bytes, int64_t rows);
 
   // updates the counters and returns promises if the queuedBytes_ counter falls
-  // below the continueSize_ low water mark. These promises then need to be realized
-  // outside the lock.
-  void updateStatsWithFreedLocked(int64_t bytes, int64_t numPackedCols, std::vector<ContinuePromise>& promises);
+  // below the continueSize_ low water mark. These promises then need to be
+  // realized outside the lock.
+  void updateStatsWithFreedLocked(
+      int64_t bytes,
+      int64_t numPackedCols,
+      std::vector<ContinuePromise>& promises);
 
   void updateTotalQueuedBytesMsLocked();
 
@@ -281,7 +285,6 @@ class CudfOutputQueue {
 
   // Total time data is queued as bytes * time.
   double totalQueuedBytesMs_;
-
 };
 
 } // namespace facebook::velox::cudf_exchange

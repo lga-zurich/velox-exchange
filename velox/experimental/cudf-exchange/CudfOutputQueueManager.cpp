@@ -59,7 +59,8 @@ bool CudfOutputQueueManager::enqueue(
     std::unique_ptr<cudf::packed_columns> txData,
     int numRows,
     ContinueFuture* future) {
-  return getQueue(taskId)->enqueue(destination, std::move(txData), numRows, future);
+  return getQueue(taskId)->enqueue(
+      destination, std::move(txData), numRows, future);
 }
 
 void CudfOutputQueueManager::noMoreData(const std::string& taskId) {
@@ -135,13 +136,13 @@ std::shared_ptr<CudfOutputQueue> CudfOutputQueueManager::getQueue(
   });
 }
 
-  std::optional<exec::OutputBuffer::Stats> CudfOutputQueueManager::stats(const std::string& taskId) {
-    auto queue = getQueueIfExists(taskId);
-    if (queue != nullptr) {
-      return queue->stats();
-    }
-    return std::nullopt;
+std::optional<exec::OutputBuffer::Stats> CudfOutputQueueManager::stats(
+    const std::string& taskId) {
+  auto queue = getQueueIfExists(taskId);
+  if (queue != nullptr) {
+    return queue->stats();
   }
-
+  return std::nullopt;
+}
 
 } // namespace facebook::velox::cudf_exchange

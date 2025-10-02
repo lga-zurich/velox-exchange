@@ -138,7 +138,6 @@ CudfExchangeClient::next(int consumerId, bool* atEnd, ContinueFuture* future) {
   return columns;
 }
 
-
 CudfExchangeClient::~CudfExchangeClient() {
   close();
 }

@@ -69,7 +69,8 @@ void CudfExchangeServer::process() {
                     << this->partitionKey_.toString();
             std::lock_guard<std::recursive_mutex> lock(this->dataMutex_);
             VELOX_CHECK(
-                this->dataPtr_ == nullptr, "Data pointer exists: Illegal state!");
+                this->dataPtr_ == nullptr,
+                "Data pointer exists: Illegal state!");
             this->dataPtr_ = std::move(data);
             this->setState(ServerState::DataReady);
             this->communicator_->addToWorkQueue(getSelfPtr());
@@ -95,7 +96,7 @@ void CudfExchangeServer::process() {
 
 void CudfExchangeServer::close() {
   bool expected = false;
-  bool desired = true;  
+  bool desired = true;
   if (!closed_.compare_exchange_strong(expected, desired)) {
     return; // already closed.
   }
@@ -152,15 +153,15 @@ void CudfExchangeServer::sendData() {
       false,
       [tid = partitionKey_.toString(), metadataTag, this](
           ucs_status_t status, std::shared_ptr<void> arg) {
-            if (status == UCS_OK) {
-              VLOG(3) << "metadata successfully sent to " << tid
-                      << " with tag: " << std::hex << metadataTag;
-            } else {
-              VLOG(0) << "Error in sendData, send metadata " << ucs_status_string(status)
-                      << " failed for task: " << tid;
-              this->setState(ServerState::Done);
-              this->communicator_->addToWorkQueue(getSelfPtr());
-            }
+        if (status == UCS_OK) {
+          VLOG(3) << "metadata successfully sent to " << tid
+                  << " with tag: " << std::hex << metadataTag;
+        } else {
+          VLOG(0) << "Error in sendData, send metadata "
+                  << ucs_status_string(status) << " failed for task: " << tid;
+          this->setState(ServerState::Done);
+          this->communicator_->addToWorkQueue(getSelfPtr());
+        }
       },
       serializedMetadata);
 

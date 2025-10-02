@@ -31,22 +31,21 @@ namespace facebook::velox::cudf_exchange {
 // Computes a mapping from names in n2 to names in n1
 // and returns that mapping in remap.
 // Names in n2 must occurs in n1.
-static 
-void getRemapping(const std::vector<std::string>& n1,
-                   const std::vector<std::string>& n2,
-                   std::vector<uint32_t>& remap) {
-    std::unordered_map<std::string, uint32_t> lookup;
-    for (uint32_t i = 0; i < n1.size(); ++i) {
-        lookup[n1[i]] = i;
-    }
+static void getRemapping(
+    const std::vector<std::string>& n1,
+    const std::vector<std::string>& n2,
+    std::vector<uint32_t>& remap) {
+  std::unordered_map<std::string, uint32_t> lookup;
+  for (uint32_t i = 0; i < n1.size(); ++i) {
+    lookup[n1[i]] = i;
+  }
 
-    remap.clear();
-    remap.reserve(n2.size());
-    for (const auto& key : n2) {
-        remap.push_back(lookup.at(key));
-    }
+  remap.clear();
+  remap.reserve(n2.size());
+  for (const auto& key : n2) {
+    remap.push_back(lookup.at(key));
+  }
 }
-
 
 CudfPartitionedOutput::CudfPartitionedOutput(
     int32_t operatorId,
@@ -69,11 +68,11 @@ CudfPartitionedOutput::CudfPartitionedOutput(
   auto sources = planNode->sources();
   std::vector<std::string> inNames, outNames;
   inNames.reserve(planNode->inputType()->size());
-  for(int i = 0; i < planNode->inputType()->size(); ++i) {
+  for (int i = 0; i < planNode->inputType()->size(); ++i) {
     inNames.push_back(planNode->inputType()->nameOf(i));
   }
   outNames.reserve(planNode->outputType()->size());
-  for(int i = 0; i < planNode->outputType()->size(); ++i) {
+  for (int i = 0; i < planNode->outputType()->size(); ++i) {
     outNames.push_back(planNode->outputType()->nameOf(i));
   }
   if (inNames != outNames) {
@@ -85,52 +84,66 @@ void CudfPartitionedOutput::addInput(RowVectorPtr input) {
   VELOX_NVTX_OPERATOR_FUNC_RANGE();
   auto cudfVector = std::dynamic_pointer_cast<CudfVector>(input);
   VELOX_CHECK(cudfVector, "Input must be a CudfVector");
-  VELOX_CHECK(!future_.valid() || future_.hasValue(), "addInput with outstanding future!");
-  auto stream = cudfVector->stream();
+  VELOX_CHECK(
+      !future_.valid() || future_.hasValue(),
+      "addInput with outstanding future!");
+  try {
+    auto stream = cudfVector->stream();
 
-  cudf::table_view tableView;
-  bool blocked;
-  if (remap_.empty()) {
-    // input and output column order is the same.
-    tableView = cudfVector->getTableView();
-  } else {
-    // input and output column order needs re-mapping.
-    tableView = cudfVector->getTableView().select(remap_.begin(), remap_.end());
-  }
-
-  if (numPartitions_ > 1) {
-    if (partitionKeyIndices_.size() > 0 || spec_ == "gather") {
-      blocked = hashPartition(tableView, cudfVector->stream());
+    cudf::table_view tableView;
+    bool blocked;
+    if (remap_.empty()) {
+      // input and output column order is the same.
+      tableView = cudfVector->getTableView();
     } else {
-      blocked = equalPartition(tableView, cudfVector->stream());
+      // input and output column order needs re-mapping.
+      tableView =
+          cudfVector->getTableView().select(remap_.begin(), remap_.end());
     }
-  } else {
-    // Single partition case. No need to hash, assume queue zero
-    auto packedCols = cudf::pack(tableView, stream);
-    // Sync the stream since UCXX/UCX is not stream oriented and without syncing,
-    // data could get lost. Syncing here is  easy but notthe most efficient.
-    // A better approach is to create an event and pass it along the data through
-    // the queue and synchronize on the event before calling into UCXX.
-    // TODO: change stream sync and move to event sync
-    // Thanks to Lawrence Mitchel for pointing this out!
-    stream.synchronize();
-    std::unique_ptr<cudf::packed_columns> packedColsPtr =
-        std::make_unique<cudf::packed_columns>(
-            std::move(packedCols.metadata), std::move(packedCols.gpu_data));    
-    blocked = sharedQueueManager()->enqueue(
-        this->taskId(),
-        0,
-        std::move(packedColsPtr),
-        tableView.num_rows(),
-        &future_);
+
+    if (numPartitions_ > 1) {
+      if (partitionKeyIndices_.size() > 0 || spec_ == "gather") {
+        blocked = hashPartition(tableView, cudfVector->stream());
+      } else {
+        blocked = equalPartition(tableView, cudfVector->stream());
+      }
+    } else {
+      // Single partition case. No need to hash, assume queue zero
+      auto packedCols = cudf::pack(tableView, stream);
+      // Sync the stream since UCXX/UCX is not stream oriented and without
+      // syncing, data could get lost. Syncing here is  easy but notthe most
+      // efficient. A better approach is to create an event and pass it along
+      // the data through the queue and synchronize on the event before calling
+      // into UCXX.
+      // TODO: change stream sync and move to event sync
+      // Thanks to Lawrence Mitchel for pointing this out!
+      stream.synchronize();
+      std::unique_ptr<cudf::packed_columns> packedColsPtr =
+          std::make_unique<cudf::packed_columns>(
+              std::move(packedCols.metadata), std::move(packedCols.gpu_data));
+      blocked = sharedQueueManager()->enqueue(
+          this->taskId(),
+          0,
+          std::move(packedColsPtr),
+          tableView.num_rows(),
+          &future_);
+    }
+    // record the statistics.
+    {
+      auto lockedStats = stats_.wlock();
+      lockedStats->addOutputVector(input->estimateFlatSize(), input->size());
+    }
+    blockingReason_ = blocked ? exec::BlockingReason::kWaitForConsumer
+                              : exec::BlockingReason::kNotBlocked;
+
+  } catch (const rmm::bad_alloc& e) {
+    VLOG(1)
+        << "In CudfPartitionedOutput caught memory alloc error, removing all memory in output queues";
+    for (int i = 0; i < numPartitions_; i++) {
+      sharedQueueManager()->deleteResults(this->taskId(), i);
+    }
+    throw; // Let the driver know we have failed
   }
-  // record the statistics.
-  {
-    auto lockedStats = stats_.wlock();
-    lockedStats->addOutputVector(input->estimateFlatSize(), input->size());
-  }
-  blockingReason_ = blocked ? exec::BlockingReason::kWaitForConsumer 
-                : exec::BlockingReason::kNotBlocked;
 }
 
 exec::BlockingReason CudfPartitionedOutput::isBlocked(ContinueFuture* future) {
@@ -218,7 +231,9 @@ void CudfPartitionedOutput::initPartitionKeys(
   }
 }
 
-bool CudfPartitionedOutput::hashPartition(cudf::table_view tableView, rmm::cuda_stream_view stream) {
+bool CudfPartitionedOutput::hashPartition(
+    cudf::table_view tableView,
+    rmm::cuda_stream_view stream) {
   VLOG(3) << "Hashing and partitioning into " << numPartitions_ << " chunks";
 
   // Use cudf hash partitioning
@@ -241,11 +256,12 @@ bool CudfPartitionedOutput::hashPartition(cudf::table_view tableView, rmm::cuda_
   // Erase first element since it's always 0 and we don't need it.
   partitionOffsets.erase(partitionOffsets.begin());
 
-  return splitAndEnqueue(
-      partitionedTable->view(), partitionOffsets, stream);
+  return splitAndEnqueue(partitionedTable->view(), partitionOffsets, stream);
 }
 
-bool CudfPartitionedOutput::equalPartition(cudf::table_view tableView, rmm::cuda_stream_view stream) {
+bool CudfPartitionedOutput::equalPartition(
+    cudf::table_view tableView,
+    rmm::cuda_stream_view stream) {
   VLOG(3) << "Splitting into " << numPartitions_ << " chunks";
   std::vector<cudf::size_type> offsets;
   cudf::size_type size = tableView.num_rows();
@@ -287,7 +303,7 @@ bool CudfPartitionedOutput::splitAndEnqueue(
     blocked = tb || blocked;
     if (blocked) {
       // The future_ is set for the first destination queue that blocks.
-      future = nullptr; 
+      future = nullptr;
     }
   }
   return blocked;

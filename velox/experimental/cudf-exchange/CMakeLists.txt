@@ -17,6 +17,8 @@ add_library(
   CudfOutputQueueManager.cpp
   CudfQueues.cpp
   CudfExchange.cpp
+  CombinedCudfHttpExchange.cpp
+  ExchangeClientFacade.cpp
   CudfExchangeProtocol.cpp
   CudfExchangeSource.cpp
   CudfExchangeServer.cpp
@@ -24,7 +26,8 @@ add_library(
   CudfExchangeClient.cpp
   Communicator.cpp
   Acceptor.cpp
-  EndpointRef.cpp)
+  EndpointRef.cpp
+  NetUtil.cpp)
 
 find_package(ucx REQUIRED)
 

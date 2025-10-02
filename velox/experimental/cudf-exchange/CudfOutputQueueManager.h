@@ -87,8 +87,8 @@ class CudfOutputQueueManager {
   /// Calls "terminate" on the queue to awake waiting producers.
   void removeTask(const std::string& taskId);
 
-  /// @brief Returns the queue statistics of the queue associated with the given task.
-  /// Returns nullopt when the specified output queue doesn't exist.
+  /// @brief Returns the queue statistics of the queue associated with the given
+  /// task. Returns nullopt when the specified output queue doesn't exist.
   std::optional<exec::OutputBuffer::Stats> stats(const std::string& taskId);
 
  private:

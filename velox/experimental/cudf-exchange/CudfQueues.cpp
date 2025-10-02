@@ -31,9 +31,10 @@ void CudfDestinationQueue::Stats::recordDequeue(
     const int64_t size = data->gpu_data->size();
 
     bytesQueued -= size;
-    VELOX_DCHECK_GE(bytesBuffered, 0, "bytesQueued must be non-negative");
+    VELOX_DCHECK_GE(bytesQueued, 0, "bytesQueued must be non-negative");
     --packedColumnsQueued;
-    VELOX_DCHECK_GE(packedColumnsQueued, 0, "packedColumnsQueued must be non-negative");
+    VELOX_DCHECK_GE(
+        packedColumnsQueued, 0, "packedColumnsQueued must be non-negative");
 
     bytesSent += size;
     packedColumnsSent++;
@@ -143,7 +144,8 @@ CudfOutputQueue::CudfOutputQueue(
   if (task_) {
     maxSize_ = task_->queryCtx()->queryConfig().maxOutputBufferSize();
     continueSize_ = (maxSize_ * kContinuePct) / 100;
-  } // else: maxSize_ and continueSize_ will be set once the task is created and initialize called.
+  } // else: maxSize_ and continueSize_ will be set once the task is created and
+    // initialize called.
   // create a queue for each destination.
   queues_.reserve(numDestinations);
   for (int i = 0; i < numDestinations; ++i) {
@@ -194,6 +196,7 @@ bool CudfOutputQueue::enqueue(
     int32_t numRows,
     ContinueFuture* future) {
   VELOX_CHECK_NOT_NULL(data);
+  VELOX_CHECK_NOT_NULL(task_);
   VELOX_CHECK(
       task_->isRunning(), "Task is terminated, cannot add data to output.");
   std::vector<CudfDataAvailable> dataAvailableCallbacks;
@@ -202,12 +205,11 @@ bool CudfOutputQueue::enqueue(
     std::lock_guard<std::mutex> l(mutex_);
     VELOX_CHECK_LT(destination, queues_.size());
 
-
     // TODO: Support other output modes as well. This is only for partitioned.
     auto numBytes = data->gpu_data->size();
-    if(enqueuePartitionedOutputLocked(
-        destination, std::move(data), dataAvailableCallbacks)) {
-          // enqueueing was successful - update the stats.
+    if (enqueuePartitionedOutputLocked(
+            destination, std::move(data), dataAvailableCallbacks)) {
+      // enqueueing was successful - update the stats.
       updateStatsWithEnqueuedLocked(numBytes, numRows);
     }
 
@@ -229,7 +231,7 @@ void CudfOutputQueue::getData(
     int destination,
     CudfDataAvailableCallback notify) {
   CudfDestinationQueue::Data data;
-  std::vector<ContinuePromise> promises;    
+  std::vector<ContinuePromise> promises;
   {
     std::lock_guard<std::mutex> l(mutex_);
     // If the queue doesn't exist yet, create an empty queue to store
@@ -244,10 +246,9 @@ void CudfOutputQueue::getData(
     // have been removed. In this case, no data is returned.
     if (queue) {
       data = queue->getData([notify, this](
-        std::unique_ptr<cudf::packed_columns> data,
-        std::vector<int64_t> remainingBytes
-      ) {
-        std::vector<ContinuePromise> promises;        
+                                std::unique_ptr<cudf::packed_columns> data,
+                                std::vector<int64_t> remainingBytes) {
+        std::vector<ContinuePromise> promises;
         int64_t bytes = data ? data->gpu_data->size() : -1L;
         notify(std::move(data), std::move(remainingBytes));
         if (bytes >= 0L) {
@@ -324,7 +325,7 @@ bool CudfOutputQueue::enqueuePartitionedOutputLocked(
   VELOX_DCHECK(dataAvailableCbs.empty());
   VELOX_CHECK_LT(destination, queues_.size());
   bool success = false;
-  auto* queue = queues_[destination].get();  
+  auto* queue = queues_[destination].get();
   if (queue != nullptr) {
     queue->enqueueBack(std::move(data));
     dataAvailableCbs.emplace_back(queue->getAndClearNotify());
@@ -350,7 +351,7 @@ bool CudfOutputQueue::isFinishedLocked() {
 void CudfOutputQueue::deleteResults(int destination) {
   bool isFinished;
   CudfDataAvailable dataAvailable;
-  std::vector<ContinuePromise> promises;  
+  std::vector<ContinuePromise> promises;
   {
     std::lock_guard<std::mutex> l(mutex_);
     VELOX_CHECK_LT(destination, queues_.size());
@@ -392,14 +393,14 @@ void CudfOutputQueue::terminate() {
 }
 
 exec::OutputBuffer::Stats CudfOutputQueue::stats() {
-    std::lock_guard<std::mutex> l(mutex_);
+  std::lock_guard<std::mutex> l(mutex_);
   std::vector<CudfDestinationQueue::Stats> queueStats;
 
   updateTotalQueuedBytesMsLocked();
 
   auto stats = exec::OutputBuffer::Stats(
       kind(),
-      noMoreQueues_,      
+      noMoreQueues_,
       atEnd_,
       isFinishedLocked(),
       queuedBytes_,
@@ -409,11 +410,13 @@ exec::OutputBuffer::Stats CudfOutputQueue::stats() {
       totalPackedColumnsSent_,
       getAverageQueueTimeMsLocked(),
       0 /* FIXME: compute num top buffers. */,
-      { /* FIXME: transition queueStats to exec::DestinationBuffer::Stats */});
+      {/* FIXME: transition queueStats to exec::DestinationBuffer::Stats */});
   return stats;
 }
 
-void CudfOutputQueue::updateStatsWithEnqueuedLocked(int64_t bytes, int64_t rows) {
+void CudfOutputQueue::updateStatsWithEnqueuedLocked(
+    int64_t bytes,
+    int64_t rows) {
   updateTotalQueuedBytesMsLocked();
 
   queuedBytes_ += bytes;
@@ -424,7 +427,10 @@ void CudfOutputQueue::updateStatsWithEnqueuedLocked(int64_t bytes, int64_t rows)
   totalPackedColumnsSent_++;
 }
 
-void CudfOutputQueue::updateStatsWithFreedLocked(int64_t bytes, int64_t numPackedCols, std::vector<ContinuePromise>& promises) {
+void CudfOutputQueue::updateStatsWithFreedLocked(
+    int64_t bytes,
+    int64_t numPackedCols,
+    std::vector<ContinuePromise>& promises) {
   updateTotalQueuedBytesMsLocked();
 
   queuedBytes_ -= bytes;
@@ -457,6 +463,5 @@ int64_t CudfOutputQueue::getAverageQueueTimeMsLocked() const {
 
   return 0;
 }
-
 
 } // namespace facebook::velox::cudf_exchange

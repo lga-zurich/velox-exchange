@@ -14,11 +14,16 @@
  * limitations under the License.
  */
 
+
 #include "velox/experimental/cudf/CudfConfig.h"
 #include "velox/experimental/cudf-exchange/CudfExchange.h"
 #include "velox/experimental/cudf-exchange/CudfPartitionedOutput.h"
 #include "velox/experimental/cudf/connectors/hive/CudfHiveConnector.h"
 #include "velox/experimental/cudf/connectors/hive/CudfHiveDataSource.h"
+#include "velox/experimental/cudf-exchange/CombinedCudfHttpExchange.h"
+#include "velox/experimental/cudf-exchange/CudfExchangeClient.h"
+#include "velox/experimental/cudf-exchange/ExchangeClientFacade.h"
+#include "velox/experimental/cudf/exec/CudfAssignUniqueId.h"
 #include "velox/experimental/cudf/exec/CudfConversion.h"
 #include "velox/experimental/cudf/exec/CudfFilterProject.h"
 #include "velox/experimental/cudf/exec/CudfHashAggregation.h"
@@ -417,27 +422,37 @@ bool CompileState::compile(bool force_replace) {
       if (!CudfOptions::getInstance().cudfExchange) {
         keepOperator = 1;
       } else {
-        // Get or create the CudfExchangeClient, using parameters from the Velox
-        // exchange client.
+        // Get or create the ExchangeClientFacade, using parameters from the
+        // Velox exchange client.
         auto key = TaskPlanNodeKey(oper->taskId(), oper->planNodeId());
-        auto clientIter =
-            cudfExchangeClientByTaskAndPlanNode_.find(key);
-        std::shared_ptr<CudfExchangeClient> client = nullptr;
-        if (clientIter == cudfExchangeClientByTaskAndPlanNode_.end()) {
+        auto clientIter = exchangeClientFacadeByTaskAndPlanNode_.find(key);
+        std::shared_ptr<ExchangeClientFacade> client = nullptr;
+        if (clientIter == exchangeClientFacadeByTaskAndPlanNode_.end()) {
+          // The following std::move transfers the ownership of the
+          // HttpExchangeClient to the facade, preventing that it is closed when
+          // the ExchangeOperator is destructed after being replace by the
+          // CombinedCudfHttpExchange.
+          auto veloxExchangeClient = std::move(exchangeOp->exchangeClient_);
+          VELOX_CHECK_NOT_NULL(
+              veloxExchangeClient, "Velox exchange client can't be null.");
           // create new cudfExchangeClient
-          std::shared_ptr<ExchangeClient> veloxExchangeClient =
-              exchangeOp->exchangeClient_;
-          client = createCudfExchangeClient(
+          auto cudfClient = std::make_shared<CudfExchangeClient>(
               oper->taskId(),
-              oper->planNodeId(),
               veloxExchangeClient->destination_,
               veloxExchangeClient->numberOfConsumers_,
               veloxExchangeClient->executor_);
+          client = std::make_shared<ExchangeClientFacade>(
+              std::move(cudfClient), std::move(veloxExchangeClient));
+          TaskPlanNodeKey key(oper->taskId(), oper->planNodeId());
+          exchangeClientFacadeByTaskAndPlanNode_.emplace(key, client);
         } else {
           client = clientIter->second;
+          // prevent closing of HttpExchangeClient when ExchangeOperator is
+          // destructed after being replaced by the CombinedCudfHttpExchange
+          exchangeOp->exchangeClient_.reset();
         }
-        replaceOp.push_back(
-            std::make_unique<CudfExchange>(id, ctx, planNode, client));
+        replaceOp.push_back(std::make_unique<CombinedCudfHttpExchange>(
+            id, ctx, planNode, client));
         replaceOp.back()->initialize();
       }
     } else if (
@@ -452,11 +467,12 @@ bool CompileState::compile(bool force_replace) {
             std::dynamic_pointer_cast<const core::MergeExchangeNode>(
                 getPlanNode(oper->planNodeId()));
         VELOX_CHECK(planNode != nullptr);
-        // create a CudfExchange operator for the merge exchange. Pass a nullptr
-        // to force the CudfExchange op to create its own, private
-        // CudfExchangeClient.
-        replaceOp.push_back(
-            std::make_unique<CudfExchange>(id, ctx, planNode, nullptr));
+        // create a CombinedCudfHttpExchange operator for the merge exchange.
+        // Pass a nullptr to force the CombinedCudfHttpExchange op to create its
+        // own, private CudfExchangeClient.
+        replaceOp.push_back(std::make_unique<CombinedCudfHttpExchange>(
+            id, ctx, planNode, nullptr));
+        replaceOp.back()->initialize();
         // Add an order-by node. SortingKeys and SortOrders will be taken from
         // the MergeExchangeNode.
         replaceOp.push_back(std::make_unique<CudfOrderBy>(id, ctx, planNode));
@@ -525,20 +541,6 @@ bool CompileState::compile(bool force_replace) {
 
   VLOG(3) << "- CompileState::compile";
   return replacementsMade;
-}
-
-std::shared_ptr<rmm::mr::device_memory_resource> mr_;
-std::shared_ptr<CudfExchangeClient> CompileState::createCudfExchangeClient(
-    const std::string& taskId,
-    const core::PlanNodeId& planNodeId,
-    const int destination,
-    const int32_t numberOfConsumers,
-    folly::Executor* executor) {
-  auto client = std::make_shared<CudfExchangeClient>(
-      taskId, destination, numberOfConsumers, executor);
-  TaskPlanNodeKey key(taskId, planNodeId);
-  cudfExchangeClientByTaskAndPlanNode_.emplace(key, client);
-  return client;
 }
 
 struct CudfDriverAdapter {

@@ -66,7 +66,8 @@ class CudfPartitionedOutput : public exec::Operator,
       const std::shared_ptr<const core::PartitionedOutputNode>& planNode);
 
   // Partitions the cudf table view using the partition keys and a hash
-  // function using the given stream. Returns true if any of the queues are blocked.
+  // function using the given stream. Returns true if any of the queues are
+  // blocked.
   bool hashPartition(cudf::table_view tableView, rmm::cuda_stream_view stream);
 
   // Splits the cudf table view into equal sizes. This is used when
@@ -87,14 +88,15 @@ class CudfPartitionedOutput : public exec::Operator,
   const std::weak_ptr<CudfOutputQueueManager> queueManager_;
   std::vector<column_index_t> partitionKeyIndices_;
   const size_t numPartitions_;
-  
+
   exec::BlockingReason blockingReason_;
   ContinueFuture future_;
 
   bool finished_{false};
   std::string spec_;
 
-  // Used for switching columns when column order differs between input and output.
+  // Used for switching columns when column order differs between input and
+  // output.
   std::vector<uint32_t> remap_;
 };
 

@@ -57,6 +57,9 @@ class CudfExchangeQueue {
   /// Exchanges to throw with the message.
   void setError(const std::string& error);
 
+  bool isInError() {
+    return !error_.empty();
+  }
   /// Returns a packed_columns object.
   ///
   /// Returns a nullptr if no data is available. If data is still expected,

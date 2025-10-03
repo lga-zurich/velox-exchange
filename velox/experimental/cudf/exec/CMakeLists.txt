@@ -30,9 +30,11 @@ add_library(
   VeloxCudfInterop.cpp
 )
 
+find_package(ucx REQUIRED)
+
 target_link_libraries(
   velox_cudf_exec
-  PUBLIC cudf::cudf cuco::cuco
+  PUBLIC cudf::cudf cuco::cuco velox_cudf_exchange
   PRIVATE
     arrow
     velox_arrow_bridge

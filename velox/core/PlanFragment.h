@@ -40,6 +40,7 @@ std::string executionStrategyToString(ExecutionStrategy strategy);
 /// Contains some information on how to execute the fragment of a plan.
 /// Used to construct Task.
 struct PlanFragment {
+  int prestoId{0};
   /// Top level (root) Plan Node.
   std::shared_ptr<const core::PlanNode> planNode;
   ExecutionStrategy executionStrategy{ExecutionStrategy::kUngrouped};

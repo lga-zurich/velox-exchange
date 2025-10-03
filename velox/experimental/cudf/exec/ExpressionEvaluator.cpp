@@ -29,9 +29,11 @@
 #include <cudf/hashing.hpp>
 #include <cudf/lists/count_elements.hpp>
 #include <cudf/round.hpp>
+#include <cudf/replace.hpp>
 #include <cudf/strings/attributes.hpp>
 #include <cudf/strings/case.hpp>
 #include <cudf/strings/contains.hpp>
+#include <cudf/strings/find.hpp>
 #include <cudf/strings/slice.hpp>
 #include <cudf/strings/split/split.hpp>
 #include <cudf/table/table.hpp>
@@ -239,7 +241,9 @@ const std::unordered_map<std::string, Op> prestoBinaryOps = {
     {"lte", Op::LESS_EQUAL},
     {"gte", Op::GREATER_EQUAL},
     {"and", Op::NULL_LOGICAL_AND},
-    {"or", Op::NULL_LOGICAL_OR}};
+    {"or", Op::NULL_LOGICAL_OR},
+    {"mod", Op::MOD},
+};
 
 const std::unordered_map<std::string, Op> sparkBinaryOps = {
     {"add", Op::ADD},
@@ -263,23 +267,17 @@ const std::unordered_map<std::string, Op> binaryOps = [] {
   return merged;
 }();
 
-const std::map<std::string, Op> unaryOps = {{"not", Op::NOT}};
+const std::map<std::string, Op> unaryOps = {
+    {"not", Op::NOT},
+    {"is_null", Op::IS_NULL}};
 
 const std::unordered_set<std::string> supportedOps = {
-    "literal",
-    "between",
-    "in",
-    "cast",
-    "switch",
-    "year",
-    "length",
-    "substr",
-    "like",
-    "cardinality",
-    "split",
-    "lower",
-    "round",
-    "hash_with_seed"};
+    "literal",     "between",  "in",       "cast",      "try_cast",
+    "switch",      "if",       "year",     "length",   "substr",    "substring",
+    "startswith",  "endswith", "contains", "isnotnull", "like",
+    "cardinality", "split",    "coalesce", "lower",     "round",
+    "hash_with_seed",
+};
 
 namespace detail {
 
@@ -481,6 +479,11 @@ cudf::ast::expression const& AstContext::pushExprToTree(
     VELOX_CHECK_EQ(len, 1);
     auto const& op1 = pushExprToTree(expr->inputs()[0]);
     return tree.push(Operation{unaryOps.at(name), op1});
+  } else if (name == "isnotnull") {
+    VELOX_CHECK_EQ(len, 1);
+    auto const& op1 = pushExprToTree(expr->inputs()[0]);
+    auto const& nullOp = tree.push(Operation{Op::IS_NULL, op1});
+    return tree.push(Operation{Op::NOT, nullOp});
   } else if (name == "between") {
     VELOX_CHECK_EQ(len, 3);
     auto const& value = pushExprToTree(expr->inputs()[0]);
@@ -600,11 +603,11 @@ cudf::ast::expression const& AstContext::pushExprToTree(
         std::dynamic_pointer_cast<FieldReference>(expr->inputs()[0]);
     VELOX_CHECK_NOT_NULL(fieldExpr, "Expression is not a field");
     return addPrecomputeInstruction(fieldExpr->name(), "lower");
-  } else if (name == "substr") {
+  } else if (name == "substr" or name == "substring") {
     // Build a cudf expression node for recursive evaluation
     auto node = CudfExpressionNode::create(expr);
     return addPrecomputeInstructionOnSide(0, 0, "substr", "", node);
-  } else if (name == "like") {
+  } else if (name == "startswith") {
     VELOX_CHECK_EQ(len, 2);
 
     auto fieldExpr =
@@ -616,7 +619,61 @@ cudf::ast::expression const& AstContext::pushExprToTree(
 
     createLiteral(literalExpr->value(), scalars);
 
+    std::string startswithExpr =
+        "startswith " + std::to_string(scalars.size() - 1);
+
+    return addPrecomputeInstruction(fieldExpr->name(), startswithExpr);
+  } else if (name == "endswith") {
+    VELOX_CHECK_EQ(len, 2);
+
+    auto fieldExpr =
+        std::dynamic_pointer_cast<FieldReference>(expr->inputs()[0]);
+    VELOX_CHECK_NOT_NULL(fieldExpr, "Expression is not a field");
+    auto literalExpr =
+        std::dynamic_pointer_cast<ConstantExpr>(expr->inputs()[1]);
+    VELOX_CHECK_NOT_NULL(literalExpr, "Expression is not a literal");
+
+    createLiteral(literalExpr->value(), scalars);
+
+    std::string endswithExpr = "endswith " + std::to_string(scalars.size() - 1);
+
+    return addPrecomputeInstruction(fieldExpr->name(), endswithExpr);
+  } else if (name == "contains") {
+    VELOX_CHECK_EQ(len, 2);
+
+    auto fieldExpr =
+        std::dynamic_pointer_cast<FieldReference>(expr->inputs()[0]);
+    VELOX_CHECK_NOT_NULL(fieldExpr, "Expression is not a field");
+    auto literalExpr =
+        std::dynamic_pointer_cast<ConstantExpr>(expr->inputs()[1]);
+    VELOX_CHECK_NOT_NULL(literalExpr, "Expression is not a literal");
+
+    createLiteral(literalExpr->value(), scalars);
+
+    std::string containsExpr = "contains " + std::to_string(scalars.size() - 1);
+
+    return addPrecomputeInstruction(fieldExpr->name(), containsExpr);
+  } else if (name == "like") {
+    VELOX_CHECK(
+        len == 2 or len == 3, "like expression should have 2 or 3 inputs");
+
+    auto fieldExpr =
+        std::dynamic_pointer_cast<FieldReference>(expr->inputs()[0]);
+    VELOX_CHECK_NOT_NULL(fieldExpr, "Expression is not a field");
+    auto literalExpr =
+        std::dynamic_pointer_cast<ConstantExpr>(expr->inputs()[1]);
+    VELOX_CHECK_NOT_NULL(literalExpr, "Expression is not a literal");
+
+    createLiteral(literalExpr->value(), scalars);
+
     std::string likeExpr = "like " + std::to_string(scalars.size() - 1);
+    if (len == 3) {
+      auto literalEscapeExpr =
+          std::dynamic_pointer_cast<ConstantExpr>(expr->inputs()[2]);
+      VELOX_CHECK_NOT_NULL(literalEscapeExpr, "Expression is not a literal");
+      createLiteral(literalEscapeExpr->value(), scalars);
+      likeExpr += " " + std::to_string(scalars.size() - 1);
+    }
 
     return addPrecomputeInstruction(fieldExpr->name(), likeExpr);
   } else if (name == "cardinality") {
@@ -634,6 +691,9 @@ cudf::ast::expression const& AstContext::pushExprToTree(
     VELOX_CHECK_EQ(len, 3);
     auto node = CudfExpressionNode::create(expr);
     return addPrecomputeInstructionOnSide(0, 0, "split", "", node);
+  } else if (name == "coalesce") {
+    auto node = CudfExpressionNode::create(expr);
+    return addPrecomputeInstructionOnSide(0, 0, "coalesce", "", node);
   } else if (name == "hash_with_seed") {
     auto node = CudfExpressionNode::create(expr);
     return addPrecomputeInstructionOnSide(0, 0, "hash_with_seed", "", node);
@@ -818,6 +878,71 @@ class SubstrFunction : public CudfFunction {
   std::unique_ptr<cudf::numeric_scalar<cudf::size_type>> stepScalar_;
 };
 
+class CoalesceFunction : public CudfFunction {
+ public:
+  CoalesceFunction(const std::shared_ptr<velox::exec::Expr>& expr) {
+    using velox::exec::ConstantExpr;
+
+    // Storing the first literal that appears in inputs because we don't need to
+    // process after that. This is the last fallback.
+    numColumnsBeforeLiteral_ = expr->inputs().size();
+    for (size_t i = 0; i < expr->inputs().size(); ++i) {
+      const auto& input = expr->inputs()[i];
+      if (input->name() == "literal") {
+        auto c = std::dynamic_pointer_cast<ConstantExpr>(input);
+        if (c && c->value()) {
+          std::vector<std::unique_ptr<cudf::scalar>> scalars;
+          (void)createLiteral(c->value(), scalars);
+          if (!scalars.empty()) {
+            literalScalar_ = std::move(scalars.back());
+            numColumnsBeforeLiteral_ = i;
+          }
+        }
+        break;
+      }
+    }
+  }
+
+  ColumnOrView eval(
+      std::vector<ColumnOrView>& inputColumns,
+      rmm::cuda_stream_view stream,
+      rmm::device_async_resource_ref mr) const override {
+    // Coalesce is practically a cudf::replace_nulls over multiple columns.
+    // Starting from first column, we keep calling replace nulls with subsequent
+    // cols until we get an all valid col or run out of columns
+
+    // If a literal comes before any column input, fill the result with it.
+    if (literalScalar_ && numColumnsBeforeLiteral_ == 0) {
+      if (inputColumns.empty()) {
+        // We need at least one column to tell us the required output size
+        VELOX_NYI("coalesce with only literal inputs is not supported");
+      }
+      auto size = asView(inputColumns[0]).size();
+      return cudf::make_column_from_scalar(*literalScalar_, size, stream, mr);
+    }
+
+    VELOX_CHECK(
+        !inputColumns.empty(),
+        "coalesce requires at least one non-literal input");
+    ColumnOrView result = asView(inputColumns[0]);
+    size_t stop = std::min(numColumnsBeforeLiteral_, inputColumns.size());
+    for (size_t i = 1; i < stop && asView(result).has_nulls(); ++i) {
+      result = cudf::replace_nulls(
+          asView(result), asView(inputColumns[i]), stream, mr);
+    }
+
+    if (literalScalar_ && asView(result).has_nulls()) {
+      result = cudf::replace_nulls(asView(result), *literalScalar_, stream, mr);
+    }
+
+    return result;
+  }
+
+ private:
+  size_t numColumnsBeforeLiteral_;
+  std::unique_ptr<cudf::scalar> literalScalar_;
+};
+
 class HashFunction : public CudfFunction {
  public:
   HashFunction(const std::shared_ptr<velox::exec::Expr>& expr) {
@@ -923,6 +1048,11 @@ bool registerBuiltinFunctions(const std::string& prefix) {
         return std::make_shared<SubstrFunction>(expr);
       });
 
+  registerCudfFunction(
+      "coalesce",
+      [](const std::string&, const std::shared_ptr<velox::exec::Expr>& expr) {
+        return std::make_shared<CoalesceFunction>(expr);
+      });
   registerCudfFunction(
       prefix + "hash_with_seed",
       [](const std::string&, const std::shared_ptr<velox::exec::Expr>& expr) {
@@ -1044,12 +1174,63 @@ void addPrecomputedColumns(
           cudf::get_current_device_resource_ref());
       inputTableColumns.emplace_back(std::move(newColumn));
     } else if (ins_name.rfind("like", 0) == 0) {
-      auto scalarIndex = std::stoi(ins_name.substr(4));
+      std::istringstream iss(ins_name.substr(4));
+      int patternIndex{-1}, escapeIndex{-1};
+      iss >> patternIndex >> escapeIndex;
       auto newColumn = cudf::strings::like(
           inputTableColumns[dependent_column_index]->view(),
+          *static_cast<cudf::string_scalar*>(scalars[patternIndex].get()),
+          escapeIndex == -1
+              ? cudf::string_scalar(
+                    "", true, stream, cudf::get_current_device_resource_ref())
+              : *static_cast<cudf::string_scalar*>(scalars[escapeIndex].get()),
+          stream,
+          cudf::get_current_device_resource_ref());
+      inputTableColumns.emplace_back(std::move(newColumn));
+    } else if (ins_name.rfind("startswith", 0) == 0) {
+      auto scalarIndex = std::stoi(ins_name.substr(10));
+      auto newColumn = cudf::strings::starts_with(
+          inputTableColumns[dependent_column_index]->view(),
           *static_cast<cudf::string_scalar*>(scalars[scalarIndex].get()),
-          cudf::string_scalar(
-              "", true, stream, cudf::get_current_device_resource_ref()),
+          stream,
+          cudf::get_current_device_resource_ref());
+      inputTableColumns.emplace_back(std::move(newColumn));
+    } else if (ins_name.rfind("endswith", 0) == 0) {
+      auto scalarIndex = std::stoi(ins_name.substr(8));
+      auto newColumn = cudf::strings::ends_with(
+          inputTableColumns[dependent_column_index]->view(),
+          *static_cast<cudf::string_scalar*>(scalars[scalarIndex].get()),
+          stream,
+          cudf::get_current_device_resource_ref());
+      inputTableColumns.emplace_back(std::move(newColumn));
+    } else if (ins_name.rfind("contains", 0) == 0) {
+      auto scalarIndex = std::stoi(ins_name.substr(8));
+      auto newColumn = cudf::strings::contains(
+          inputTableColumns[dependent_column_index]->view(),
+          *static_cast<cudf::string_scalar*>(scalars[scalarIndex].get()),
+          stream,
+          cudf::get_current_device_resource_ref());
+      inputTableColumns.emplace_back(std::move(newColumn));
+    } else if (ins_name.rfind("like", 0) == 0) {
+      std::istringstream iss(ins_name.substr(4));
+      int patternIndex{-1}, escapeIndex{-1};
+      iss >> patternIndex >> escapeIndex;
+      auto newColumn = cudf::strings::like(
+          inputTableColumns[dependent_column_index]->view(),
+          *static_cast<cudf::string_scalar*>(scalars[patternIndex].get()),
+          escapeIndex == -1
+              ? cudf::string_scalar(
+                    "", true, stream, cudf::get_current_device_resource_ref())
+              : *static_cast<cudf::string_scalar*>(scalars[escapeIndex].get()),
+          stream,
+          cudf::get_current_device_resource_ref());
+      inputTableColumns.emplace_back(std::move(newColumn));
+    } else if (ins_name.rfind("fill", 0) == 0) {
+      auto scalarIndex =
+          std::stoi(ins_name.substr(5)); // "fill " is 5 characters
+      auto newColumn = cudf::make_column_from_scalar(
+          *static_cast<cudf::string_scalar*>(scalars[scalarIndex].get()),
+          inputTableColumns[dependent_column_index]->size(),
           stream,
           cudf::get_current_device_resource_ref());
       inputTableColumns.emplace_back(std::move(newColumn));

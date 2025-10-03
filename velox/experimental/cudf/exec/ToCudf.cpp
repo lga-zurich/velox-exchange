@@ -25,6 +25,7 @@
 #include "velox/experimental/cudf/exec/CudfLimit.h"
 #include "velox/experimental/cudf/exec/CudfLocalPartition.h"
 #include "velox/experimental/cudf/exec/CudfOrderBy.h"
+#include "velox/experimental/cudf/exec/CudfTopN.h"
 #include "velox/experimental/cudf/exec/ExpressionEvaluator.h"
 #include "velox/experimental/cudf/exec/ToCudf.h"
 #include "velox/experimental/cudf/exec/Utilities.h"
@@ -41,7 +42,9 @@
 #include "velox/exec/Limit.h"
 #include "velox/exec/Operator.h"
 #include "velox/exec/OrderBy.h"
+#include "velox/exec/StreamingAggregation.h"
 #include "velox/exec/TableScan.h"
+#include "velox/exec/TopN.h"
 
 #include <cudf/detail/nvtx/ranges.hpp>
 
@@ -156,7 +159,9 @@ bool CompileState::compile(bool force_replace) {
           const exec::Operator* op) {
         return isAnyOf<
                    exec::OrderBy,
+                   exec::TopN,
                    exec::HashAggregation,
+                   exec::StreamingAggregation,
                    exec::Limit,
                    exec::LocalPartition,
                    exec::LocalExchange,
@@ -175,7 +180,9 @@ bool CompileState::compile(bool force_replace) {
                           isJoinSupported](const exec::Operator* op) {
     return isAnyOf<
                exec::OrderBy,
+               exec::TopN,
                exec::HashAggregation,
+               exec::StreamingAggregation,
                exec::Limit,
                exec::LocalPartition,
                exec::AssignUniqueId>(op) ||
@@ -186,7 +193,9 @@ bool CompileState::compile(bool force_replace) {
                             isTableScanSupported](const exec::Operator* op) {
     return isAnyOf<
                exec::OrderBy,
+               exec::TopN,
                exec::HashAggregation,
+               exec::StreamingAggregation,
                exec::Limit,
                exec::LocalExchange,
                exec::AssignUniqueId>(op) ||
@@ -238,7 +247,18 @@ bool CompileState::compile(bool force_replace) {
       auto planNode = std::dynamic_pointer_cast<const core::TableScanNode>(
           getPlanNode(oper->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
+      auto scanOp = dynamic_cast<exec::TableScan*>(oper);
       keepOperator = 1;
+      // We don't make a new type of table scan operator but use the existing
+      // type. But we need to update the connector so we'll make a new plan node
+      // from the old one and use that to construct the new operator of the same
+      // type but with the updated connector
+      // auto newPlanNode = core::TableScanNode::Builder(*planNode)
+      //                        .id(planNode->id() + "-cudf")
+      //                        .build();
+      // replaceOp.push_back(
+      //     std::make_unique<exec::TableScan>(id, ctx, newPlanNode, "cudf"));
+      // replaceOp.back()->initialize();
     } else if (isJoinSupported(oper)) {
       if (auto joinBuildOp = dynamic_cast<exec::HashBuild*>(oper)) {
         auto planNode = std::dynamic_pointer_cast<const core::HashJoinNode>(
@@ -262,9 +282,18 @@ bool CompileState::compile(bool force_replace) {
           getPlanNode(orderByOp->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
       replaceOp.push_back(std::make_unique<CudfOrderBy>(id, ctx, planNode));
-    } else if (auto hashAggOp = dynamic_cast<exec::HashAggregation*>(oper)) {
+      replaceOp.back()->initialize();
+    } else if (auto topNOp = dynamic_cast<exec::TopN*>(oper)) {
+      auto planNode = std::dynamic_pointer_cast<const core::TopNNode>(
+          getPlanNode(topNOp->planNodeId()));
+      VELOX_CHECK(planNode != nullptr);
+      replaceOp.push_back(std::make_unique<CudfTopN>(id, ctx, planNode));
+      replaceOp.back()->initialize();
+    } else if (
+        dynamic_cast<exec::HashAggregation*>(oper) or
+        dynamic_cast<exec::StreamingAggregation*>(oper)) {
       auto planNode = std::dynamic_pointer_cast<const core::AggregationNode>(
-          getPlanNode(hashAggOp->planNodeId()));
+          getPlanNode(oper->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
       replaceOp.push_back(
           std::make_unique<CudfHashAggregation>(id, ctx, planNode));
@@ -335,14 +364,14 @@ bool CompileState::compile(bool force_replace) {
            isTableScanSupported](const exec::Operator* op) {
             return isAnyOf<
                        exec::OrderBy,
-                       exec::TableScan,
                        exec::HashAggregation,
+                       exec::StreamingAggregation,
                        exec::Limit,
                        exec::LocalPartition,
                        exec::LocalExchange,
                        exec::HashBuild,
                        exec::HashProbe>(op) ||
-                isFilterProjectSupported(op);
+                isFilterProjectSupported(op) || isTableScanSupported(op);
           };
       VELOX_CHECK(
           !(keepOperator == 0 && shouldSupportGpuOperator(oper) &&

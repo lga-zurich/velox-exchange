@@ -21,16 +21,14 @@ namespace facebook::velox::cudf_exchange {
 /* static */
 void EndpointRef::onClose(ucs_status_t status, std::shared_ptr<void> arg) {
   std::shared_ptr<EndpointRef> ep = std::static_pointer_cast<EndpointRef>(arg);
-
+  ep->cleanup();
   while (!ep->communicators_.empty()) {
     auto& ptr = *ep->communicators_.begin();
     if (std::shared_ptr<CommElement> spt = ptr.lock()) {
       // communicator reference is valid so we need to close it.
-      // This will also remove it from the set.
       spt->close();
-    } else {
-      ep->communicators_.erase(ptr);
     }
+    ep->communicators_.erase(ptr);
   }
 
   auto c = Communicator::getInstance();
@@ -41,6 +39,7 @@ bool EndpointRef::addCommElem(std::shared_ptr<CommElement> commElem) {
   if (!commElem) {
     return false; // nothing to do, no commElem.
   }
+  cleanup();
   auto ret = communicators_.insert(commElem);
   return ret.second;
 }
@@ -48,9 +47,8 @@ bool EndpointRef::addCommElem(std::shared_ptr<CommElement> commElem) {
 void EndpointRef::removeCommElem(std::shared_ptr<CommElement> commElem) {
   if (!commElem) {
     return;
-  }
+  }  
   communicators_.erase(commElem);
-  // FIXME: Should the endpoint be closed when the count reaches 0?
 }
 
 bool EndpointRef::operator<(EndpointRef const& other) {
@@ -64,6 +62,16 @@ bool EndpointRef::operator<(EndpointRef const& other) {
     return false;
   }
   return endpoint_->getHandle() < other.endpoint_->getHandle();
+}
+
+void EndpointRef::cleanup() {
+  for(auto it = communicators_.begin(); it != communicators_.end();) {
+    if (it->expired()) {
+      it = communicators_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 } // namespace facebook::velox::cudf_exchange

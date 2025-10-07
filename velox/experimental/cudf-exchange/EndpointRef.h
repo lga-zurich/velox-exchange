@@ -57,7 +57,8 @@ class EndpointRef : std::enable_shared_from_this<EndpointRef> {
   const std::shared_ptr<ucxx::Endpoint> endpoint_;
 
  private:
-  // For the references to the communicators, a weak pointer is used.
+  void cleanup(); // cleans up expired communication elements.
+
   std::set<
       std::weak_ptr<CommElement>,
       std::owner_less<std::weak_ptr<CommElement>>>

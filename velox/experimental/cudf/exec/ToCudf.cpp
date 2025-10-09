@@ -538,6 +538,8 @@ bool CompileState::compile(bool force_replace) {
   return replacementsMade;
 }
 
+std::shared_ptr<rmm::mr::device_memory_resource> mr_;
+
 struct CudfDriverAdapter {
   bool force_replace_;
 

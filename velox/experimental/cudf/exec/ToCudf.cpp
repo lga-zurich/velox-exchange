@@ -166,7 +166,7 @@ bool CompileState::compile(bool force_replace) {
     if (isAnyOf<exec::CallbackSink>(op))
       return false;
 
-    if (!CudfOptions::getInstance().cudfExchange) {
+    if (!CudfConfig::getInstance().exchange) {
       return false;
     }
     auto planNode =
@@ -176,20 +176,18 @@ bool CompileState::compile(bool force_replace) {
     if (!planNode) {
       return false;
     }
-    if (planNode->isRootFragment() &&
-        !CudfOptions::getInstance().shouldTransformLastOutput()) {
+    if (planNode->isRootFragment()) {
       return false;
     }
     return true;
   };
 
   auto isExchangeSupported = [](const exec::Operator* op) {
-    return CudfOptions::getInstance().cudfExchange &&
-        isAnyOf<exec::Exchange>(op);
+    return CudfConfig::getInstance().exchange && isAnyOf<exec::Exchange>(op);
   };
 
   auto isMergeExchangeSupported = [](const exec::Operator* op) {
-    return CudfOptions::getInstance().cudfExchange &&
+    return CudfConfig::getInstance().exchange &&
         isAnyOf<exec::MergeExchange>(op);
   };
 
@@ -404,7 +402,7 @@ bool CompileState::compile(bool force_replace) {
           std::dynamic_pointer_cast<const core::PartitionedOutputNode>(
               getPlanNode(partitionOp->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
-      if ((!CudfOptions::getInstance().cudfExchange) ||
+      if ((!CudfConfig::getInstance().exchange) ||
           (planNode->isRootFragment())) {
         keepOperator = 1;
       } else {
@@ -416,7 +414,7 @@ bool CompileState::compile(bool force_replace) {
       auto planNode = std::dynamic_pointer_cast<const core::ExchangeNode>(
           getPlanNode(oper->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
-      if (!CudfOptions::getInstance().cudfExchange) {
+      if (!CudfConfig::getInstance().exchange) {
         keepOperator = 1;
       } else {
         // Get or create the ExchangeClientFacade, using parameters from the
@@ -457,7 +455,7 @@ bool CompileState::compile(bool force_replace) {
       keepOperator = 1;
     } else if (
         auto mergeExchangeOp = dynamic_cast<exec::MergeExchange*>(oper)) {
-      if (!CudfOptions::getInstance().cudfExchange) {
+      if (!CudfConfig::getInstance().exchange) {
         keepOperator = 1;
       } else {
         auto planNode =

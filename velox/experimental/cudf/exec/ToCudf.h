@@ -83,60 +83,6 @@ class CompileState {
   exec::Driver& driver_;
 };
 
-class CudfOptions {
- public:
-  static CudfOptions& getInstance() {
-    static CudfOptions instance;
-    return instance;
-  }
-
-  void setPrefix(const std::string& prefix) {
-    prefix_ = prefix;
-  }
-
-  const std::string& prefix() const {
-    return prefix_;
-  }
-
-  void setShouldTransformLastOutput(bool newValue) {
-    transformLastOutput_ = newValue;
-  }
-
-  const bool shouldTransformLastOutput() const {
-    return transformLastOutput_;
-  }
-
-  const bool cudfEnabled;
-  const std::string cudfMemoryResource;
-  const bool cudfExchange;
-  // The initial percent of GPU memory to allocate for memory resource for one
-  // thread.
-  int memoryPercent;
-  const bool force_replace;
-
-  CudfOptions(bool force_repl)
-      : cudfEnabled(FLAGS_velox_cudf_enabled),
-        cudfMemoryResource(FLAGS_velox_cudf_memory_resource),
-        cudfExchange(FLAGS_velox_cudf_exchange),
-        memoryPercent(50),
-        force_replace{force_repl},
-        prefix_("") {}
-
- private:
-  CudfOptions()
-      : cudfEnabled(FLAGS_velox_cudf_enabled),
-        cudfMemoryResource(FLAGS_velox_cudf_memory_resource),
-        cudfExchange(FLAGS_velox_cudf_exchange),
-        memoryPercent(50),
-        force_replace{false},
-        prefix_(""),
-        transformLastOutput_(false) {}
-  CudfOptions(const CudfOptions&) = delete;
-  CudfOptions& operator=(const CudfOptions&) = delete;
-  std::string prefix_;
-  bool transformLastOutput_;
-};
-
 extern std::shared_ptr<rmm::mr::device_memory_resource> mr_;
 
 /// Registers adapter to add cuDF operators to Drivers.

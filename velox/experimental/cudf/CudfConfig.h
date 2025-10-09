@@ -30,7 +30,7 @@ struct CudfConfig {
   static constexpr const char* kCudfFunctionNamePrefix{
       "cudf.function_name_prefix"};
   static constexpr const char* kCudfForceReplace{"cudf.force_replace"};
-  static constexpr const char* kCudfForceReplace{"cudf.exchange"};
+  static constexpr const char* kCudfExchange{"cudf.exchange"};
 
   /// Singleton CudfConfig instance.
   /// Clients must set the configs below before invoking registerCudf().

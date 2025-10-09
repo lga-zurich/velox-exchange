@@ -1,4 +1,4 @@
-                                        /*
+/*
  * Copyright (c) Facebook, Inc. and its affiliates.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -194,7 +194,7 @@ void CudfHashJoinBuild::noMoreInput() {
   for (auto const& tbl : tbls) {
     VELOX_CHECK_NOT_NULL(tbl);
   }
-  if (cudfDebugEnabled()) {
+  if (CudfConfig::getInstance().debugEnabled) {
     std::cout << "Build table number of columns: " << tbls[0]->num_columns()
               << std::endl;
     for (auto i = 0; i < tbls.size(); i++) {
@@ -230,7 +230,7 @@ void CudfHashJoinBuild::noMoreInput() {
     if (buildHashJoin) {
       VELOX_CHECK_NOT_NULL(hashObjects.back());
     }
-    if (cudfDebugEnabled()) {
+    if (CudfConfig::getInstance().debugEnabled) {
       if (hashObjects.back() != nullptr) {
         printf(
             "hashObject %d is not nullptr %p\n", i, hashObjects.back().get());
@@ -283,7 +283,7 @@ CudfHashJoinProbe::CudfHashJoinProbe(
           fmt::format("[{}]", joinNode->id())),
       joinNode_(joinNode),
       cudaEvent_(std::make_unique<CudaEvent>(cudaEventDisableTiming)) {
-  if (cudfDebugEnabled()) {
+  if (CudfConfig::getInstance().debugEnabled) {
     std::cout << "CudfHashJoinProbe constructor" << std::endl;
   }
   auto probeType = joinNode_->sources()[0]->outputType();
@@ -640,7 +640,7 @@ RowVectorPtr CudfHashJoinProbe::getOutput() {
     auto& rightTable = rightTables[i];
     auto& hb = hbs[i];
     VELOX_CHECK_NOT_NULL(rightTable);
-    if (cudfDebugEnabled()) {
+    if (CudfConfig::getInstance().debugEnabled) {
       if (rightTable != nullptr)
         printf(
             "right_table is not nullptr %p hasValue(%d)\n",
@@ -958,7 +958,7 @@ RowVectorPtr CudfHashJoinProbe::getOutput() {
     auto rightResult =
         cudf::gather(rightInput, rightIndicesCol, oobPolicy, stream);
 
-    if (cudfDebugEnabled()) {
+    if (CudfConfig::getInstance().debugEnabled) {
       std::cout << "Left result number of columns: "
                 << leftResult->num_columns() << std::endl;
       std::cout << "Right result number of columns: "

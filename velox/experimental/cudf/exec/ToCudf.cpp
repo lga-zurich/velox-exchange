@@ -14,15 +14,14 @@
  * limitations under the License.
  */
 
-
-#include "velox/experimental/cudf/CudfConfig.h"
+#include "velox/experimental/cudf-exchange/CombinedCudfHttpExchange.h"
 #include "velox/experimental/cudf-exchange/CudfExchange.h"
+#include "velox/experimental/cudf-exchange/CudfExchangeClient.h"
 #include "velox/experimental/cudf-exchange/CudfPartitionedOutput.h"
+#include "velox/experimental/cudf-exchange/ExchangeClientFacade.h"
+#include "velox/experimental/cudf/CudfConfig.h"
 #include "velox/experimental/cudf/connectors/hive/CudfHiveConnector.h"
 #include "velox/experimental/cudf/connectors/hive/CudfHiveDataSource.h"
-#include "velox/experimental/cudf-exchange/CombinedCudfHttpExchange.h"
-#include "velox/experimental/cudf-exchange/CudfExchangeClient.h"
-#include "velox/experimental/cudf-exchange/ExchangeClientFacade.h"
 #include "velox/experimental/cudf/exec/CudfAssignUniqueId.h"
 #include "velox/experimental/cudf/exec/CudfConversion.h"
 #include "velox/experimental/cudf/exec/CudfFilterProject.h"
@@ -392,13 +391,12 @@ bool CompileState::compile(bool force_replace) {
       auto planNode = std::dynamic_pointer_cast<const core::AssignUniqueIdNode>(
           getPlanNode(assignUniqueIdOp->planNodeId()));
       VELOX_CHECK(planNode != nullptr);
-      replaceOp.push_back(
-          std::make_unique<CudfAssignUniqueId>(
-              id,
-              ctx,
-              planNode,
-              planNode->taskUniqueId(),
-              planNode->uniqueIdCounter()));
+      replaceOp.push_back(std::make_unique<CudfAssignUniqueId>(
+          id,
+          ctx,
+          planNode,
+          planNode->taskUniqueId(),
+          planNode->uniqueIdCounter()));
       replaceOp.back()->initialize();
     } else if (
         auto partitionOp = dynamic_cast<exec::PartitionedOutput*>(oper)) {
@@ -410,9 +408,8 @@ bool CompileState::compile(bool force_replace) {
           (planNode->isRootFragment())) {
         keepOperator = 1;
       } else {
-        replaceOp.push_back(
-            std::make_unique<CudfPartitionedOutput>(
-                id, ctx, planNode, partitionOp->eagerFlush_));
+        replaceOp.push_back(std::make_unique<CudfPartitionedOutput>(
+            id, ctx, planNode, partitionOp->eagerFlush_));
         replaceOp.back()->initialize();
       }
     } else if (auto exchangeOp = dynamic_cast<exec::Exchange*>(oper)) {
@@ -627,6 +624,9 @@ void CudfConfig::initialize(
   }
   if (config.find(kCudfForceReplace) != config.end()) {
     forceReplace = folly::to<bool>(config[kCudfForceReplace]);
+  }
+  if (config.find(kCudfExchange) != config.end()) {
+    exchange = folly::to<bool>(config[kCudfExchange]);
   }
 }
 

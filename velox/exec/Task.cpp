@@ -40,6 +40,7 @@
 
 #ifdef VELOX_ENABLE_CUDF
 #include <velox/experimental/cudf-exchange/CudfOutputQueueManager.h>
+#include "velox/experimental/cudf/CudfConfig.h"
 #endif
 
 using facebook::velox::common::testutil::TestValue;
@@ -1159,12 +1160,15 @@ void Task::initializePartitionOutput() {
         partitionedOutputNode->numPartitions(),
         numOutputDrivers);
 #ifdef VELOX_ENABLE_CUDF
-    auto queueMgr = facebook::velox::cudf_exchange::CudfOutputQueueManager::
-        getInstanceRef();
-    queueMgr->initializeTask(
-        shared_from_this(),
-        partitionedOutputNode->numPartitions(),
-        numOutputDrivers);
+    if (velox::cudf_velox::CudfConfig::getInstance().enabled &&
+        velox::cudf_velox::CudfConfig::getInstance().exchange) {
+      auto queueMgr = facebook::velox::cudf_exchange::CudfOutputQueueManager::
+          getInstanceRef();
+      queueMgr->initializeTask(
+          shared_from_this(),
+          partitionedOutputNode->numPartitions(),
+          numOutputDrivers);
+    }
 #endif
   }
 }
@@ -2625,6 +2629,8 @@ void Task::maybeRemoveFromOutputBufferManager() {
       bufferManager->removeTask(taskId_);
     }
 #ifdef VELOX_ENABLE_CUDF
+    if (velox::cudf_velox::CudfConfig::getInstance().enabled &&
+        velox::cudf_velox::CudfConfig::getInstance().exchange) {
       // Capture output queue stats before deleting the queue.
       auto queueMgr = facebook::velox::cudf_exchange::CudfOutputQueueManager::
           getInstanceRef();
@@ -2637,6 +2643,7 @@ void Task::maybeRemoveFromOutputBufferManager() {
         }
       }
       queueMgr->removeTask(taskId_);
+    }
 #endif
   }
 }

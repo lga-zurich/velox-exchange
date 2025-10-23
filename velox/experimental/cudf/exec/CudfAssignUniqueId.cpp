@@ -68,6 +68,7 @@ RowVectorPtr CudfAssignUniqueId::getOutput() {
   auto stream = cudfVector->stream();
   auto uniqueIdColumn = generateIdColumn(
       input_->size(), stream, cudf::get_current_device_resource_ref());
+  // output = [input, uniqueIdColumn]
   auto size = cudfVector->size();
   auto columns = cudfVector->release()->release();
   columns.push_back(std::move(uniqueIdColumn));
@@ -109,6 +110,8 @@ std::unique_ptr<cudf::column> CudfAssignUniqueId::generateIdColumn(
         "Ran out of unique IDs at {}. Need {} more.",
         rowIdCounter_,
         (end - start));
+    // std::iota(rawResults + start, rawResults + end,
+    // uniqueValueMask_ | rowIdCounter_);
     starts.push_back(uniqueValueMask_ | rowIdCounter_);
     sizes.push_back(end - start);
 
@@ -116,7 +119,7 @@ std::unique_ptr<cudf::column> CudfAssignUniqueId::generateIdColumn(
     start = end;
   }
 
-  // Copy starts and sizes to device.
+  // copy starts and sizes to device
   rmm::device_buffer d_starts_buffer(
       starts.data(), starts.size() * sizeof(int64_t), stream, mr);
   rmm::device_buffer d_sizes_buffer(
@@ -138,7 +141,7 @@ std::unique_ptr<cudf::column> CudfAssignUniqueId::generateIdColumn(
 
   auto list_sequence = cudf::lists::sequences(
       d_starts_column_view, d_sizes_column_view, stream, mr);
-  // Discard offsets.
+  // discard offsets
   return std::move(list_sequence->release().children[1]);
 }
 

@@ -89,12 +89,6 @@ add_test(
 )
 
 add_test(
-  NAME velox_cudf_assign_unique_id_test
-  COMMAND velox_cudf_assign_unique_id_test
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-)
-
-add_test(
   NAME velox_cudf_config_test
   COMMAND velox_cudf_config_test
   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
@@ -226,15 +220,6 @@ target_link_libraries(
 )
 
 target_link_libraries(velox_cudf_config_test velox_cudf_exec gtest gtest_main)
-target_link_libraries(
-  velox_cudf_assign_unique_id_test
-  velox_cudf_exec
-  velox_exec
-  velox_exec_test_lib
-  velox_test_util
-  gtest
-  gtest_main
-)
 
 target_link_libraries(
   velox_cudf_assign_unique_id_test

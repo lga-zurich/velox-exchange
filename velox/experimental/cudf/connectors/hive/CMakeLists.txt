@@ -12,6 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+add_library(velox_cudf_hive_config CudfHiveConfig.cpp)
+
+set_target_properties(velox_cudf_hive_config PROPERTIES CUDA_ARCHITECTURES native)
+
+target_link_libraries(velox_cudf_hive_config velox_core velox_exception cudf::cudf)
+
 add_library(
   velox_cudf_hive_connector
   OBJECT
@@ -25,4 +31,7 @@ add_library(
 
 set_target_properties(velox_cudf_hive_connector PROPERTIES CUDA_ARCHITECTURES native)
 
-target_link_libraries(velox_cudf_hive_connector PRIVATE ucxx::ucxx velox_hive_connector PUBLIC cudf::cudf)
+target_link_libraries(
+  velox_cudf_hive_connector
+  PRIVATE ucxx::ucxx cudf::cudf velox_common_io velox_connector velox_type_tz velox_gcs
+)

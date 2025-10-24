@@ -54,13 +54,11 @@ set(VELOX_cudf_VERSION 25.10 CACHE STRING "cudf version")
 
 set(
   VELOX_cudf_BUILD_SHA256_CHECKSUM
-  #c7dfb333ee0cb9f86d5ee94aaa34985ae6cf45d4ed8658d850707cc8e0db8e16
-  cc30dea93e1f7375c650af8473d00c52824b6718a4e8f26c4d0afb0abca66036
+  c7dfb333ee0cb9f86d5ee94aaa34985ae6cf45d4ed8658d850707cc8e0db8e16
 )
 set(
   VELOX_cudf_SOURCE_URL
-  #"https://github.com/rapidsai/cudf/archive/2bfd896b4e0c1f0b66402c1e067b4904dbd15c5e.tar.gz"
-  "https://github.com/lga-zurich/cudf/archive/1df2b9dfb246f137ab5d10366ba0140ba5d1d133.tar.gz"
+  "https://github.com/rapidsai/cudf/archive/2bfd896b4e0c1f0b66402c1e067b4904dbd15c5e.tar.gz"
 )
 velox_resolve_dependency_url(cudf)
 
@@ -107,6 +105,7 @@ block(SCOPE_FOR VARIABLES)
     cudf
     URL ${VELOX_cudf_SOURCE_URL}
     URL_HASH ${VELOX_cudf_BUILD_SHA256_CHECKSUM}
+    PATCH_COMMAND git apply ${CMAKE_CURRENT_LIST_DIR}/cudf-25.10-PR20144.patch
     SOURCE_SUBDIR
     cpp
     UPDATE_DISCONNECTED 1

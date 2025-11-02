@@ -20,28 +20,31 @@
 #include "velox/connectors/hive/storage_adapters/s3fs/S3Util.h"
 
 #include <aws/core/Aws.h>
-#include <aws/s3/S3Client.h>
-#include <aws/s3/model/GetObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
+#include <aws/transfer/TransferManager.h>
+#include <aws/transfer/TransferHandle.h>
+
 
 namespace facebook::velox::filesystems {
 
 namespace {
 
-// By default, the AWS SDK reads object data into an auto-growing StringStream.
-// To avoid copies, read directly into a pre-allocated buffer instead.
+// By default, the AWS SDK reads object data into a backed Stream.
+// To avoid copies, it read directly into a pre-allocated buffer instead.
 // See https://github.com/aws/aws-sdk-cpp/issues/64 for an alternative but
 // functionally similar recipe.
-Aws::IOStreamFactory AwsWriteableStreamFactory(void* data, int64_t nbytes) {
-  return [=]() { return Aws::New<StringViewStream>("", data, nbytes); };
-}
+class UnderlyingStreamWrapper : public Aws::IOStream {
+  public:
+    explicit UnderlyingStreamWrapper(std::streambuf* buf) : Aws::IOStream(buf) {}
+    ~UnderlyingStreamWrapper() override = default;
+};
 
 } // namespace
 
 class S3ReadFile ::Impl {
  public:
-  explicit Impl(std::string_view path, Aws::S3::S3Client* client)
-      : client_(client) {
+  explicit Impl(std::string_view path, std::shared_ptr<Aws::S3::S3Client> client, std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor)
+      : client_(client), executor_(executor) {
     getBucketAndKeyFromPath(path, bucket_, key_);
   }
 
@@ -73,6 +76,9 @@ class S3ReadFile ::Impl {
         outcome, "Failed to get metadata for S3 object", bucket_, key_);
     length_ = outcome.GetResult().GetContentLength();
     VELOX_CHECK_GE(length_, 0);
+    Aws::Transfer::TransferManagerConfiguration transferConfig(executor_.get());
+    transferConfig.s3Client = client_;
+    transferManager_ = Aws::Transfer::TransferManager::Create(transferConfig);
   }
 
   std::string_view pread(
@@ -144,35 +150,51 @@ class S3ReadFile ::Impl {
   // bytes.
   void preadInternal(uint64_t offset, uint64_t length, char* position) const {
     // Read the desired range of bytes.
-    Aws::S3::Model::GetObjectRequest request;
-    Aws::S3::Model::GetObjectResult result;
-
-    request.SetBucket(awsString(bucket_));
-    request.SetKey(awsString(key_));
-    std::stringstream ss;
-    ss << "bytes=" << offset << "-" << offset + length - 1;
-    request.SetRange(awsString(ss.str()));
-    request.SetResponseStreamFactory(
-        AwsWriteableStreamFactory(position, length));
-    RECORD_METRIC_VALUE(kMetricS3ActiveConnections);
-    RECORD_METRIC_VALUE(kMetricS3GetObjectCalls);
-    auto outcome = client_->GetObject(request);
-    if (!outcome.IsSuccess()) {
-      RECORD_METRIC_VALUE(kMetricS3GetObjectErrors);
+  Aws::Utils::Stream::PreallocatedStreamBuf streamBuffer(
+        (unsigned char*)position, length);
+    auto downloadHandle =
+        transferManager_->DownloadFile(bucket_, key_, offset, length, [&]() {
+          return Aws::New<UnderlyingStreamWrapper>("TestTag", &streamBuffer);
+        });
+    int count = 1;
+    using namespace std::chrono;
+    uint64_t startTime =
+        duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+            .count();
+    uint64_t now = startTime;
+    uint64_t logAt = startTime + 5000; // wait 5 seconds; then warn and backoff
+    auto status = downloadHandle->GetStatus();
+    while (status == Aws::Transfer::TransferStatus::NOT_STARTED ||
+           status == Aws::Transfer::TransferStatus::IN_PROGRESS) {
+      status = downloadHandle->GetStatus();
+      now = duration_cast<milliseconds>(system_clock::now().time_since_epoch())
+                .count();
+      if (now > logAt) {
+        VLOG(1) << "S3 Request is taking a long time: "
+                << (now - startTime) / 1000 << "s!\n";
+        count++;
+        logAt += count * 5000; // backoff for next warning
+      }
     }
-    RECORD_METRIC_VALUE(kMetricS3GetObjectRetries, outcome.GetRetryCount());
-    RECORD_METRIC_VALUE(kMetricS3ActiveConnections, -1);
-    VELOX_CHECK_AWS_OUTCOME(outcome, "Failed to get S3 object", bucket_, key_);
+    VELOX_CHECK(
+        downloadHandle->GetStatus() == Aws::Transfer::TransferStatus::COMPLETED,
+        "Failed to get S3 object using the transfer manager from location: {}:{}",
+        bucket_,
+        key_);
   }
 
-  Aws::S3::S3Client* client_;
+  std::shared_ptr<Aws::S3::S3Client> client_;
+  std::shared_ptr<Aws::Transfer::TransferManager> transferManager_;
   std::string bucket_;
   std::string key_;
   int64_t length_ = -1;
+  std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
 };
 
-S3ReadFile::S3ReadFile(std::string_view path, Aws::S3::S3Client* client) {
-  impl_ = std::make_shared<Impl>(path, client);
+S3ReadFile::S3ReadFile(std::string_view path, std::shared_ptr<Aws::S3::S3Client> client,
+      std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor>
+          executor) {
+  impl_ = std::make_shared<Impl>(path, client, executor);
 }
 
 S3ReadFile::~S3ReadFile() = default;

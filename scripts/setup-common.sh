@@ -299,7 +299,7 @@ function install_aws_deps {
   local AWS_REPO_NAME="aws/aws-sdk-cpp"
 
   github_checkout $AWS_REPO_NAME "$AWS_SDK_VERSION" --depth 1 --recurse-submodules
-  cmake_install -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" -DBUILD_SHARED_LIBS:BOOL=OFF -DMINIMIZE_SIZE:BOOL=ON -DENABLE_TESTING:BOOL=OFF -DBUILD_ONLY:STRING="s3;identity-management"
+  cmake_install -DCMAKE_BUILD_TYPE="${CMAKE_BUILD_TYPE}" -DBUILD_SHARED_LIBS:BOOL=OFF -DMINIMIZE_SIZE:BOOL=ON -DENABLE_TESTING:BOOL=OFF -DBUILD_ONLY:STRING="s3;identity-management;transfer"
 }
 
 function install_minio {

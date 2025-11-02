@@ -57,6 +57,8 @@ class S3Config {
   /// Log location of AWS C++ SDK.
   static constexpr const char* kS3LogLocation = "hive.s3.log-location";
 
+  static constexpr const char* kS3TransferManagerMaxThreadsConfig = "hive.s3.transfer-manager-max-threads";
+
   /// Keys to identify the config.
   enum class Keys {
     kBegin,
@@ -76,6 +78,7 @@ class S3Config {
     kRetryMode,
     kUseProxyFromEnv,
     kCredentialsProvider,
+    kTransferManagerMaxThreads,
     kEnd
   };
 
@@ -114,6 +117,8 @@ class S3Config {
              std::make_pair("use-proxy-from-env", "false")},
             {Keys::kCredentialsProvider,
              std::make_pair("aws-credentials-provider", std::nullopt)},
+            {Keys::kTransferManagerMaxThreads,
+             std::make_pair("transfer-manager-max-threads", "25")},
         };
     return config;
   }
@@ -241,6 +246,11 @@ class S3Config {
 
   std::optional<std::string> credentialsProvider() const {
     return config_.find(Keys::kCredentialsProvider)->second;
+  }
+
+  uint32_t transferManagerMaxThreads() const {
+    auto val = config_.find(Keys::kTransferManagerMaxThreads)->second;
+    return folly::to<int32_t>(val.value());
   }
 
  private:

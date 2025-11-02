@@ -27,8 +27,11 @@
 
 #include <fmt/format.h>
 #include <glog/logging.h>
+#include <chrono>
+#include <fstream>
 #include <memory>
 #include <stdexcept>
+
 
 #include <aws/core/Aws.h>
 #include <aws/core/auth/AWSCredentialsProviderChain.h>
@@ -36,11 +39,17 @@
 #include <aws/core/client/DefaultRetryStrategy.h>
 #include <aws/identity-management/auth/STSAssumeRoleCredentialsProvider.h>
 #include <aws/s3/S3Client.h>
+
 #include <aws/s3/model/CopyObjectRequest.h>
 #include <aws/s3/model/DeleteObjectRequest.h>
 #include <aws/s3/model/HeadObjectRequest.h>
 #include <aws/s3/model/ListObjectsRequest.h>
 #include <aws/s3/model/PutObjectRequest.h>
+
+#include <aws/core/utils/memory/AWSMemory.h>
+#include <aws/core/utils/memory/stl/AWSStreamFwd.h>
+#include <aws/core/utils/threading/Executor.h>
+#include <aws/core/utils/StringUtils.h>
 
 namespace facebook::velox::filesystems {
 namespace {
@@ -210,6 +219,7 @@ static std::atomic<int> fileSystemCount = 0;
 
 void finalizeS3() {
   VELOX_CHECK((fileSystemCount == 0), "Cannot finalize S3 while in use");
+  //S3FileSystem::Impl::s3Client()->reset();
   getAwsInstance()->finalize();
 }
 
@@ -293,6 +303,8 @@ class S3FileSystem::Impl {
         inferPayloadSign(s3Config.payloadSigningPolicy());
 
     auto credentialsProvider = getCredentialsProvider(s3Config);
+
+    executor_ = std::make_shared<Aws::Utils::Threading::PooledThreadExecutor>(s3Config.transferManagerMaxThreads());
 
     client_ = std::make_shared<Aws::S3::S3Client>(
         credentialsProvider, nullptr /* endpointProvider */, clientConfig);
@@ -429,8 +441,12 @@ class S3FileSystem::Impl {
   // Make it clear that the S3FileSystem instance owns the S3Client.
   // Once the S3FileSystem is destroyed, the S3Client fails to work
   // due to the Aws::ShutdownAPI invocation in the destructor.
-  Aws::S3::S3Client* s3Client() const {
-    return client_.get();
+  std::shared_ptr<Aws::S3::S3Client> s3Client() const {
+    return client_;
+  }
+
+  const std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor>& getExecutor() const {
+    return S3FileSystem::Impl::executor_;
   }
 
   std::string getLogLevelName() const {
@@ -443,7 +459,9 @@ class S3FileSystem::Impl {
 
  private:
   std::shared_ptr<Aws::S3::S3Client> client_;
+  static std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor_;
 };
+std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> S3FileSystem::Impl::executor_(nullptr);
 
 S3FileSystem::S3FileSystem(
     std::string_view bucketName,
@@ -465,7 +483,7 @@ std::unique_ptr<ReadFile> S3FileSystem::openFileForRead(
     std::string_view s3Path,
     const FileOptions& options) {
   const auto path = getPath(s3Path);
-  auto s3file = std::make_unique<S3ReadFile>(path, impl_->s3Client());
+  auto s3file = std::make_unique<S3ReadFile>(path, impl_->s3Client(), impl_->getExecutor());
   s3file->initialize(options);
   return s3file;
 }
@@ -475,7 +493,7 @@ std::unique_ptr<WriteFile> S3FileSystem::openFileForWrite(
     const FileOptions& options) {
   const auto path = getPath(s3Path);
   auto s3file =
-      std::make_unique<S3WriteFile>(path, impl_->s3Client(), options.pool);
+      std::make_unique<S3WriteFile>(path, impl_->s3Client().get(), options.pool);
   return s3file;
 }
 

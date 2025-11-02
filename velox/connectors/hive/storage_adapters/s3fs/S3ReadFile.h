@@ -17,6 +17,7 @@
 #pragma once
 
 #include "velox/common/file/File.h"
+#include <aws/core/utils/threading/Executor.h>
 
 namespace Aws::S3 {
 class S3Client;
@@ -27,7 +28,7 @@ namespace facebook::velox::filesystems {
 /// Implementation of s3 read file.
 class S3ReadFile : public ReadFile {
  public:
-  S3ReadFile(std::string_view path, Aws::S3::S3Client* client);
+  S3ReadFile(std::string_view path, std::shared_ptr<Aws::S3::S3Client> client, std::shared_ptr<Aws::Utils::Threading::PooledThreadExecutor> executor);
 
   ~S3ReadFile() override;
 

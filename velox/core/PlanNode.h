@@ -2587,30 +2587,26 @@ class PartitionedOutputNode : public PlanNode {
       PartitionFunctionSpecPtr partitionFunctionSpec,
       RowTypePtr outputType,
       VectorSerde::Kind serdeKind,
-      PlanNodePtr source,
-      bool isRootFragment = false);
+      PlanNodePtr source);
 
   static std::shared_ptr<PartitionedOutputNode> broadcast(
       const PlanNodeId& id,
       int numPartitions,
       RowTypePtr outputType,
       VectorSerde::Kind serdeKind,
-      PlanNodePtr source,
-      bool isRootFragment = false);
+      PlanNodePtr source);
 
   static std::shared_ptr<PartitionedOutputNode> arbitrary(
       const PlanNodeId& id,
       RowTypePtr outputType,
       VectorSerde::Kind serdeKind,
-      PlanNodePtr source,
-      bool isRootFragment = false);
+      PlanNodePtr source);
 
   static std::shared_ptr<PartitionedOutputNode> single(
       const PlanNodeId& id,
       RowTypePtr outputType,
       VectorSerde::Kind VectorSerde,
-      PlanNodePtr source,
-      bool isRootFragment = false);
+      PlanNodePtr source);
 
   class Builder {
    public:
@@ -2627,7 +2623,6 @@ class PartitionedOutputNode : public PlanNode {
       serdeKind_ = other.serdeKind();
       VELOX_CHECK_EQ(other.sources().size(), 1);
       source_ = other.sources()[0];
-      isRootFragment_ = other.isRootFragment();
     }
 
     Builder& id(PlanNodeId id) {
@@ -2707,8 +2702,7 @@ class PartitionedOutputNode : public PlanNode {
           partitionFunctionSpec_.value(),
           outputType_.value(),
           serdeKind_.value(),
-          source_.value(),
-          isRootFragment_.value_or(false));
+          source_.value());
     }
 
    private:
@@ -2721,12 +2715,7 @@ class PartitionedOutputNode : public PlanNode {
     std::optional<RowTypePtr> outputType_;
     std::optional<VectorSerde::Kind> serdeKind_;
     std::optional<PlanNodePtr> source_;
-    std::optional<bool> isRootFragment_;
   };
-
-  const bool isRootFragment() const {
-    return isRootFragment_;
-  }
 
   const RowTypePtr& outputType() const override {
     return outputType_;
@@ -2807,7 +2796,6 @@ class PartitionedOutputNode : public PlanNode {
   const PartitionFunctionSpecPtr partitionFunctionSpec_;
   const VectorSerde::Kind serdeKind_;
   const RowTypePtr outputType_;
-  const bool isRootFragment_;
 };
 
 using PartitionedOutputNodePtr = std::shared_ptr<const PartitionedOutputNode>;

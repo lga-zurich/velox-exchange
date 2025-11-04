@@ -2894,7 +2894,8 @@ PartitionedOutputNode::PartitionedOutputNode(
     PartitionFunctionSpecPtr partitionFunctionSpec,
     RowTypePtr outputType,
     VectorSerde::Kind serdeKind,
-    PlanNodePtr source)
+    PlanNodePtr source,
+    bool rootFragment)
     : PlanNode(id),
       kind_(kind),
       sources_{{std::move(source)}},
@@ -2903,7 +2904,8 @@ PartitionedOutputNode::PartitionedOutputNode(
       replicateNullsAndAny_(replicateNullsAndAny),
       partitionFunctionSpec_(std::move(partitionFunctionSpec)),
       serdeKind_(serdeKind),
-      outputType_(std::move(outputType)) {
+      outputType_(std::move(outputType)),
+      rootFragment_(rootFragment) {
   VELOX_USER_CHECK_GT(numPartitions_, 0);
   if (numPartitions_ == 1) {
     VELOX_USER_CHECK(

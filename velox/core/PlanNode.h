@@ -2607,7 +2607,8 @@ class PartitionedOutputNode : public PlanNode {
       const PlanNodeId& id,
       RowTypePtr outputType,
       VectorSerde::Kind VectorSerde,
-      PlanNodePtr source);
+      PlanNodePtr source,
+      bool rootFragment = false);
 
   class Builder {
    public:

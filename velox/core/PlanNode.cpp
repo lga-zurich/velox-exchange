@@ -2969,7 +2969,7 @@ std::shared_ptr<PartitionedOutputNode> PartitionedOutputNode::single(
     RowTypePtr outputType,
     VectorSerde::Kind serdeKind,
     PlanNodePtr source,
-    bool rootFragment = false) {
+    bool rootFragment) {
   std::vector<TypedExprPtr> noKeys;
   return std::make_shared<PartitionedOutputNode>(
       id,

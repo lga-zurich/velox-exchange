@@ -2968,7 +2968,8 @@ std::shared_ptr<PartitionedOutputNode> PartitionedOutputNode::single(
     const PlanNodeId& id,
     RowTypePtr outputType,
     VectorSerde::Kind serdeKind,
-    PlanNodePtr source) {
+    PlanNodePtr source,
+    bool rootFragment = false) {
   std::vector<TypedExprPtr> noKeys;
   return std::make_shared<PartitionedOutputNode>(
       id,
@@ -2979,7 +2980,8 @@ std::shared_ptr<PartitionedOutputNode> PartitionedOutputNode::single(
       std::make_shared<GatherPartitionFunctionSpec>(),
       std::move(outputType),
       serdeKind,
-      std::move(source));
+      std::move(source),
+      rootFragment);
 }
 
 void EnforceSingleRowNode::addDetails(std::stringstream& /* stream */) const {
